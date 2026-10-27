@@ -1,10 +1,97 @@
 name: Build Shark Browser (CEF)
+
 on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
   workflow_dispatch:
+
 permissions:
   contents: write
+
 jobs:
   build:
-    runs-on: ubuntu-latest
+    name: Build ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            artifact-path: dist/SharkBrowser-windows-x64.zip
+          - os: macos-latest
+            platform: macos
+            artifact-path: |
+              dist/SharkBrowser-macos-arm64.zip
+              dist/SharkBrowser-macos-arm64.dmg
+          - os: ubuntu-24.04
+            platform: linux
+            artifact-path: dist/SharkBrowser-linux-x64.tar.gz
+
+    runs-on: ${{ matrix.os }}
     steps:
-      - run: echo "CEF migration in progress; use the final CEF workflow after migration."
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake ninja-build python3 python3-dev \
+            libgtk-3-dev libnss3-dev libasound2-dev libxss-dev \
+            libx11-xcb-dev libxcomposite-dev libxcursor-dev libxdamage-dev \
+            libxext-dev libxfixes-dev libxi-dev libxrandr-dev libxrender-dev \
+            libxkbcommon-dev libxshmfence-dev libgbm-dev libatspi2.0-dev \
+            libatk-bridge2.0-dev libatk1.0-dev libcups2-dev libdrm-dev \
+            libpango1.0-dev
+
+      - name: Set up Python for CEF build tools
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Download EasyList and EasyPrivacy
+        run: python tools/download_filters.py
+
+      - name: Configure Windows
+        if: matrix.platform == 'windows'
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+
+      - name: Configure macOS (Apple Silicon)
+        if: matrix.platform == 'macos'
+        run: cmake -S . -B build -G Xcode -DPROJECT_ARCH=arm64
+
+      - name: Configure Linux
+        if: matrix.platform == 'linux'
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build Windows
+        if: matrix.platform == 'windows'
+        run: cmake --build build --config Release --target cefsimple --parallel 2
+
+      - name: Build macOS
+        if: matrix.platform == 'macos'
+        run: cmake --build build --config Release --target cefsimple --parallel 2
+
+      - name: Build Linux
+        if: matrix.platform == 'linux'
+        run: cmake --build build --target cefsimple --parallel 2
+
+      - name: Package CEF distribution
+        run: python tools/package_cef.py --platform ${{ matrix.platform }} --build-dir build --output-dir dist
+
+      - name: Upload platform packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: SharkBrowser-${{ matrix.platform }}
+          path: ${{ matrix.artifact-path }}
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Publish tagged release assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
