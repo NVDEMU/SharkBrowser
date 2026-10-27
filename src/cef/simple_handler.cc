@@ -128,7 +128,8 @@ class SmokeTestTextVisitor final : public CefStringVisitor {
         body.find("Example Domain") != std::string::npos;
     const std::string details = "URL: " + url_ +
         "\nBody text bytes: " + std::to_string(body.size()) +
-        "\nExpected page content found: " + (has_expected_content ? "yes" : "no");
+        "\nExpected page content found: " + (has_expected_content ? "yes" : "no") +
+        "\nRendered text preview: " + body.substr(0, 1200);
     CefPostTask(TID_UI, base::BindOnce(&SimpleHandler::FinishSmokeTest,
                                       handler_, browser_, has_expected_content, details));
   }
