@@ -294,6 +294,8 @@ void SimpleHandler::HandleButton(const std::string& action, CefRefPtr<CefButton>
     if (address_field_) { address_field_->RequestFocus(); address_field_->SelectAll(false); }
   } else if (action == "find") {
     OpenRoute("find");
+  } else if (action == "find-submit") {
+    OpenRoute("find");
   } else if (action == "print") {
     if (ActiveTab() && ActiveTab()->view && ActiveTab()->view->GetBrowser()) ActiveTab()->view->GetBrowser()->GetHost()->Print();
   } else if (action == "private") {
@@ -1113,6 +1115,17 @@ std::string SimpleHandler::BuildPrivacyPage() const {
   for (size_t i = 0; i < recent.size() && i < 20; ++i) html << "<article><div>" << HtmlEscape(recent[i]) << "</div></article>";
   html << "</section><p class='muted'>Lists are EasyList/EasyPrivacy-compatible domain rules plus built-in fallbacks. This is not yet a complete uBlock Origin replacement.</p></main></body></html>";
   return html.str();
+}
+
+
+std::string SimpleHandler::BuildFindPage() const {
+  return R"HTML(<!doctype html><html><head><meta charset="utf-8"><title>Find in page</title>)HTML" +
+      InternalStyle() +
+      R"HTML(</head><body><main><a href="shark://home">◆ Shark</a><h1>Find in page</h1>
+      <p>Search text on the current page. Use Enter to move to the next match.</p>
+      <form action="shark-action://find-submit" onsubmit="location.href='shark-action://find/'+encodeURIComponent(document.getElementById('term').value);return false;">
+      <input id="term" autofocus placeholder="Find on this page"><button>Find</button></form>
+      <div class="actions"><a href="shark://home">Home</a></div></main></body></html>)HTML";
 }
 
 std::string SimpleHandler::BuildSettingsPage() const {
