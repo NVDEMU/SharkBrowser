@@ -1,5 +1,24 @@
-node_modules/
+# Native CEF build output
+build/
 dist/
-release/
-.DS_Store
+out/
+third_party/cef/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+.ninja_*
+*.sln
+*.vcxproj*
+*.xcodeproj/
+*.xcworkspace/
 *.log
+.DS_Store
+
+# Downloaded third-party filter lists (fetch with tools/download_filters.py)
+resources/filters/easylist.txt
+resources/filters/easyprivacy.txt
+
+# Legacy JavaScript artifacts, if present in local worktrees
+node_modules/
+release/
