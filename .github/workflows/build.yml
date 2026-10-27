@@ -78,7 +78,7 @@ jobs:
 
       - name: Build Windows
         if: matrix.platform == 'windows'
-        run: cmake --build build --target cefsimple --parallel 2
+        run: cmake --build build --target shark_copy_filters --parallel 2
 
       - name: Build macOS
         if: matrix.platform == 'macos'
