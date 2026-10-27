@@ -278,7 +278,6 @@ void SimpleHandler::WindowDestroyed() {
   find_field_ = nullptr;
   status_button_ = nullptr;
   action_buttons_.clear();
-  if (is_closing_ && browser_list_.empty()) CefQuitMessageLoop();
 }
 
 void SimpleHandler::ShowMainWindow() {
@@ -778,7 +777,12 @@ void SimpleHandler::OnBeforeClose(CefRefPtr<CefBrowser> browser) {
     private_browser_ids_.erase(browser->GetIdentifier());
   }
   if (browser_list_.empty()) {
-    if (!is_closing_ && tabs_.empty() && window_) {
+    if (is_closing_) {
+      // The window initially refused to close while browsers were alive.
+      // Close it now that every browser has finished shutting down.
+      if (window_) window_->Close();
+      CefQuitMessageLoop();
+    } else if (tabs_.empty() && window_) {
       CreateTab("shark://home", false);
     }
   }
