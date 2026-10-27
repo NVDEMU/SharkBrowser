@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const crypto = require('node:crypto');
 const { ElectronBlocker, Request } = require('@ghostery/adblocker-electron');
 const fetch = require('cross-fetch');
+const { FALLBACK_FILTERS, resourceTypes, classifyBlocked } = require('./filtering');
 
 let mainWindow = null;
 let dataFile = null;
@@ -11,22 +12,6 @@ let blocker = null;
 let blockerReady = false;
 const configuredSessions = new WeakSet();
 const privateWindows = new Set();
-const FALLBACK_FILTERS = [
-  '||doubleclick.net^',
-  '||googlesyndication.com^',
-  '||googleadservices.com^',
-  '||adnxs.com^',
-  '||taboola.com^',
-  '||outbrain.com^',
-  '||criteo.com^',
-  '||google-analytics.com^$third-party',
-  '||googletagmanager.com^$third-party',
-  '||connect.facebook.net^$third-party',
-  '||hotjar.com^$third-party',
-  '||mixpanel.com^$third-party',
-  '||scorecardresearch.com^$third-party'
-].join('\n');
-
 const stats = { total: 0, ads: 0, trackers: 0, bySite: {}, recent: [] };
 let allowlist = new Set();
 let enabled = true;
@@ -78,16 +63,6 @@ function emitStats() {
     mainWindow.webContents.send('blocking:stats', { ...stats, enabled, allowlist: [...allowlist], blockerReady });
   }
 }
-function classifyBlocked(url) {
-  let parsed;
-  try { parsed = new URL(url); } catch { return { category: 'tracker', domain: 'unknown' }; }
-  const host = parsed.hostname.toLowerCase();
-  const adDomains = ['doubleclick.net', 'googlesyndication.com', 'googleadservices.com', 'adnxs.com', 'adsrvr.org', 'adform.net', 'taboola.com', 'outbrain.com', 'criteo.com'];
-  const trackerDomains = ['google-analytics.com', 'googletagmanager.com', 'hotjar.com', 'mixpanel.com', 'segment.com', 'segment.io', 'amplitude.com', 'scorecardresearch.com', 'quantserve.com', 'clarity.ms', 'bat.bing.com', 'connect.facebook.net'];
-  if (adDomains.some(domain => isDomain(host, domain)) || /\/(ads?|advert|banner)([/?._-]|$)/i.test(parsed.pathname)) return { category: 'ad', domain: host };
-  if (trackerDomains.some(domain => isDomain(host, domain)) || /(analytics|tracking|tracker|telemetry|pixel|beacon)/i.test(host + parsed.pathname)) return { category: 'tracker', domain: host };
-  return { category: 'ad', domain: host };
-}
 function recordBlock(details, category, domain) {
   const pageHost = safeHostname(details.referrer) || 'unknown';
   stats.total++;
@@ -100,12 +75,6 @@ function recordBlock(details, category, domain) {
   if (stats.total % 5 === 0) saveState();
   emitStats();
 }
-const resourceTypes = {
-  mainFrame: 'main_frame', subFrame: 'sub_frame', stylesheet: 'stylesheet',
-  script: 'script', image: 'image', font: 'font', object: 'object',
-  xhr: 'xmlhttprequest', ping: 'ping', media: 'media', websocket: 'websocket',
-  other: 'other'
-};
 function configureSession(ses, isPrivate) {
   if (configuredSessions.has(ses)) return;
   configuredSessions.add(ses);
