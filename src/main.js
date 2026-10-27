@@ -380,7 +380,7 @@ function createWindow({ isPrivate = false } = {}) {
   return win;
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   dataFile = path.join(app.getPath('userData'), 'shark-state.json');
   passwordFile = path.join(app.getPath('userData'), 'passwords.enc');
   readState();
