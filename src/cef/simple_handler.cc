@@ -387,16 +387,56 @@ void SimpleHandler::HandleButton(const std::string& action, CefRefPtr<CefButton>
   }
 }
 
-bool SimpleHandler::HandleAddressKey(const CefKeyEvent& event) {
+bool SimpleHandler::HandleAddressKey(CefRefPtr<CefTextfield> textfield,
+                                      const CefKeyEvent& event) {
+  const bool is_find_field = find_field_ && textfield == find_field_;
+  if (is_find_field && event.windows_key_code == 27 &&
+      (event.type == KEYEVENT_RAWKEYDOWN || event.type == KEYEVENT_KEYUP)) {
+    if (event.type == KEYEVENT_KEYUP) {
+      find_field_->SetVisible(false);
+      last_find_text_.clear();
+      if (ActiveTab() && ActiveTab()->view && ActiveTab()->view->GetBrowser())
+        ActiveTab()->view->GetBrowser()->GetHost()->StopFinding(true);
+      RefreshToolbarState();
+    }
+    return true;
+  }
   if ((event.type == KEYEVENT_RAWKEYDOWN || event.type == KEYEVENT_KEYUP) &&
       event.windows_key_code == 13) {
-    if (event.type == KEYEVENT_KEYUP && address_field_) {
-      NavigateAddress(address_field_->GetText().ToString());
+    if (event.type == KEYEVENT_KEYUP) {
+      if (is_find_field) {
+        const std::string term = find_field_->GetText().ToString();
+        if (ActiveTab() && ActiveTab()->view && ActiveTab()->view->GetBrowser()) {
+          CefRefPtr<CefBrowserHost> host = ActiveTab()->view->GetBrowser()->GetHost();
+          if (term.empty()) {
+            host->StopFinding(true);
+            last_find_text_.clear();
+          } else {
+            const bool find_next = term == last_find_text_;
+            const bool forward = (event.modifiers & EVENTFLAG_SHIFT_DOWN) == 0;
+            host->Find(1, term, forward, false, find_next);
+            last_find_text_ = term;
+          }
+        }
+      } else if (address_field_) {
+        NavigateAddress(address_field_->GetText().ToString());
+      }
       return true;
     }
-    return event.type == KEYEVENT_RAWKEYDOWN;
+    return true;
   }
   return false;
+}
+
+void SimpleHandler::CycleTab(int direction) {
+  CEF_REQUIRE_UI_THREAD();
+  if (tabs_.size() < 2) return;
+  auto it = std::find_if(tabs_.begin(), tabs_.end(),
+                         [this](const Tab& tab) { return tab.id == active_tab_id_; });
+  int index = it == tabs_.end() ? 0 : static_cast<int>(std::distance(tabs_.begin(), it));
+  const int size = static_cast<int>(tabs_.size());
+  index = (index + direction + size) % size;
+  SelectTab(tabs_[static_cast<size_t>(index)].id);
 }
 
 bool SimpleHandler::AdoptPopupView(CefRefPtr<CefBrowserView> popup_view) {
