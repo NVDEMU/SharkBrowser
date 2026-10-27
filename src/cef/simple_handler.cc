@@ -13,6 +13,7 @@
 #include "include/base/cef_callback.h"
 #include "include/cef_path_util.h"
 #include "include/cef_parser.h"
+#include "include/views/cef_fill_layout.h"
 #include "include/cef_request_context.h"
 #include "include/wrapper/cef_closure_task.h"
 #include "include/wrapper/cef_helpers.h"
@@ -218,7 +219,6 @@ void SimpleHandler::BuildWindow(CefRefPtr<CefWindow> window) {
   find_field_ = CefTextfield::CreateTextfield(
       new SharkTextfieldDelegate(CefRefPtr<SimpleHandler>(this)));
   find_field_->SetPlaceholderText("Find in page");
-  find_field_->SetMinimumSize(CefSize(130, 29));
   find_field_->SetVisible(false);
   toolbar_panel_->AddChildView(find_field_);
   toolbar_layout_->SetFlexForView(find_field_, 0);
@@ -464,9 +464,7 @@ void SimpleHandler::CreateTab(const std::string& url, bool is_private) {
   CefRefPtr<CefRequestContext> request_context = nullptr;
   if (is_private) {
     CefRequestContextSettings context_settings;
-    context_settings.cache_path = "";
     context_settings.persist_session_cookies = 0;
-    context_settings.persist_user_preferences = 0;
     request_context = CefRequestContext::CreateContext(context_settings, nullptr);
   }
 
@@ -654,9 +652,9 @@ void SimpleHandler::HandleInternalAction(const std::string& action) {
     out << (blocking_enabled_ ? "1" : "0") << "\n" << home_page_ << "\n";
   } else if (StartsWith(action, "find/")) {
     const std::string encoded = action.substr(5);
-    const std::string term = CefURIUnescape(encoded, true).ToString();
+    const std::string term = CefURIDecode(encoded, true, UU_NORMAL | UU_URL_SPECIAL_CHARS_EXCEPT_PATH_SEPARATORS).ToString();
     if (ActiveTab() && ActiveTab()->view && ActiveTab()->view->GetBrowser() && !term.empty())
-      ActiveTab()->view->GetBrowser()->GetHost()->Find(1, term, true, false, false);
+      ActiveTab()->view->GetBrowser()->GetHost()->Find(term, true, false, false);
   } else if (StartsWith(action, "remove-bookmark/")) {
     const int index = std::atoi(action.substr(16).c_str());
     if (index >= 0 && index < static_cast<int>(bookmarks_.size())) {
@@ -1275,7 +1273,7 @@ std::string InternalStyle() {
 }
 
 std::string SimpleHandler::DataURL(const std::string& html) const {
-  return "data:text/html;charset=utf-8;base64," + CefBase64Encode(html.data(), html.size());
+  return "data:text/html;charset=utf-8;base64," + CefBase64Encode(html.data(), html.size()).ToString();
 }
 
 std::string SimpleHandler::HtmlEscape(const std::string& input) const {
