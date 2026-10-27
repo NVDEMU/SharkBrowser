@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session, shell, dialog, Menu, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, session, shell, dialog, Menu, clipboard, safeStorage } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
@@ -8,6 +8,10 @@ const { FALLBACK_FILTERS, resourceTypes, classifyBlocked } = require('./filterin
 
 let mainWindow = null;
 let dataFile = null;
+let passwordFile = null;
+let passwordVault = [];
+let passwordStorageAvailable = false;
+let passwordStorageReason = 'Password storage has not initialized yet.';
 let blocker = null;
 let blockerReady = false;
 const configuredSessions = new WeakSet();
@@ -28,6 +32,63 @@ let browserData = {
     blockAds: true
   }
 };
+
+
+function passwordStorageStatus() {
+  return { available: passwordStorageAvailable, reason: passwordStorageReason, count: passwordVault.length };
+}
+async function initializePasswordVault() {
+  try {
+    passwordStorageAvailable = await safeStorage.isAsyncEncryptionAvailable();
+    if (process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text') {
+      passwordStorageAvailable = false;
+      passwordStorageReason = 'A system keyring is unavailable. Shark will not store passwords unencrypted.';
+      return;
+    }
+    if (!passwordStorageAvailable) {
+      passwordStorageReason = 'The operating system key store is unavailable. Shark will not store passwords unencrypted.';
+      return;
+    }
+    passwordStorageReason = 'Passwords are encrypted with the operating system key store.';
+    try {
+      const bytes = await fs.promises.readFile(passwordFile);
+      const decrypted = await safeStorage.decryptStringAsync(bytes);
+      passwordVault = JSON.parse(decrypted.result);
+      if (!Array.isArray(passwordVault)) throw new Error('Invalid password vault format');
+      passwordVault = passwordVault.filter(item => item && typeof item.id === 'string' && typeof item.origin === 'string' && typeof item.username === 'string' && typeof item.password === 'string');
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        passwordStorageAvailable = false;
+        passwordStorageReason = 'The encrypted password vault could not be unlocked. The existing file was left untouched.';
+        console.error('Password vault could not be unlocked:', error.message);
+      }
+    }
+  } catch (error) {
+    passwordStorageAvailable = false;
+    passwordStorageReason = 'Secure password storage is unavailable on this system.';
+    console.warn(passwordStorageReason, error.message);
+  }
+}
+function canSavePasswordOrigin(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || (url.protocol === 'http:' && ['localhost', '127.0.0.1', '::1'].includes(url.hostname));
+  } catch { return false; }
+}
+function publicPassword(item) {
+  return { id: item.id, origin: item.origin, username: item.username, addedAt: item.addedAt, updatedAt: item.updatedAt };
+}
+async function persistPasswordVault() {
+  if (!passwordStorageAvailable) throw new Error(passwordStorageReason);
+  const encrypted = await safeStorage.encryptStringAsync(JSON.stringify(passwordVault));
+  const temp = passwordFile + '.tmp';
+  await fs.promises.writeFile(temp, encrypted, { mode: 0o600 });
+  await fs.promises.rename(temp, passwordFile);
+}
+async function readPasswordVault() {
+  if (!passwordStorageAvailable) return { ok: false, error: passwordStorageReason, entries: [] };
+  return { ok: true, status: passwordStorageStatus(), entries: passwordVault.map(publicPassword) };
+}
 
 function isWebUrl(value) {
   try { return ['http:', 'https:'].includes(new URL(value).protocol); } catch { return false; }
@@ -321,7 +382,9 @@ function createWindow({ isPrivate = false } = {}) {
 
 app.whenReady().then(() => {
   dataFile = path.join(app.getPath('userData'), 'shark-state.json');
+  passwordFile = path.join(app.getPath('userData'), 'passwords.enc');
   readState();
+  await initializePasswordVault();
   blocker = ElectronBlocker.parse(FALLBACK_FILTERS);
   createWindow();
   installApplicationMenu();
@@ -396,6 +459,72 @@ ipcMain.handle('shark:clear-stats', () => {
   saveState(); emitStats(); return { ...stats, enabled, allowlist: [...allowlist], blockerReady };
 });
 ipcMain.handle('shark:new-private-window', () => { createWindow({ isPrivate: true }); return true; });
+
+ipcMain.handle('browser:get-password-status', () => passwordStorageStatus());
+ipcMain.handle('browser:get-passwords', async () => readPasswordVault());
+ipcMain.handle('browser:save-password', async (_event, payload) => {
+  if (!passwordStorageAvailable) return { ok: false, error: passwordStorageReason };
+  if (!payload || !canSavePasswordOrigin(payload.origin)) return { ok: false, error: 'Passwords can only be saved for HTTPS websites (localhost is allowed for development).' };
+  const origin = new URL(payload.origin).origin;
+  const username = String(payload.username || '').trim().slice(0, 512);
+  const password = String(payload.password || '').slice(0, 8192);
+  if (!username || !password) return { ok: false, error: 'A username and password are required.' };
+  const prior = passwordVault.findIndex(item => item.origin === origin && item.username === username);
+  const now = Date.now();
+  const entry = { id: prior >= 0 ? passwordVault[prior].id : crypto.randomUUID(), origin, username, password, addedAt: prior >= 0 ? passwordVault[prior].addedAt : now, updatedAt: now };
+  if (prior >= 0) passwordVault[prior] = entry; else passwordVault.unshift(entry);
+  try {
+    await persistPasswordVault();
+    return { ok: true, entry: publicPassword(entry), status: passwordStorageStatus(), entries: passwordVault.map(publicPassword) };
+  } catch (error) { return { ok: false, error: error.message }; }
+});
+ipcMain.handle('browser:get-password-secret', async (_event, id) => {
+  if (!passwordStorageAvailable) return { ok: false, error: passwordStorageReason };
+  const entry = passwordVault.find(item => item.id === id);
+  if (!entry) return { ok: false, error: 'Saved login not found.' };
+  return { ok: true, origin: entry.origin, username: entry.username, password: entry.password };
+});
+ipcMain.handle('browser:delete-password', async (_event, id) => {
+  if (!passwordStorageAvailable) return { ok: false, error: passwordStorageReason };
+  const before = passwordVault.length;
+  passwordVault = passwordVault.filter(item => item.id !== id);
+  if (before !== passwordVault.length) {
+    try { await persistPasswordVault(); } catch (error) { return { ok: false, error: error.message }; }
+  }
+  return { ok: true, status: passwordStorageStatus(), entries: passwordVault.map(publicPassword) };
+});
+ipcMain.handle('browser:export-bookmarks', async (_event, bookmarks) => {
+  const safe = Array.isArray(bookmarks) ? bookmarks.filter(item => item && isWebUrl(item.url)).map(item => ({ title: String(item.title || item.url).slice(0, 300), url: String(item.url).slice(0, 4000), addedAt: Number(item.addedAt) || Date.now() })) : [];
+  const target = await dialog.showSaveDialog(mainWindow || undefined, { title: 'Export bookmarks', defaultPath: path.join(app.getPath('documents'), 'Shark-Bookmarks.json'), filters: [{ name: 'JSON bookmarks', extensions: ['json'] }] }).catch(() => ({ canceled: true }));
+  if (target.canceled || !target.filePath) return { ok: false, canceled: true };
+  try { await fs.promises.writeFile(target.filePath, JSON.stringify({ format: 'shark-bookmarks', version: 1, bookmarks: safe }, null, 2), { mode: 0o600 }); return { ok: true, count: safe.length }; }
+  catch (error) { return { ok: false, error: error.message }; }
+});
+ipcMain.handle('browser:import-bookmarks', async () => {
+  const result = await dialog.showOpenDialog(mainWindow || undefined, { title: 'Import bookmarks', properties: ['openFile'], filters: [{ name: 'Bookmark files', extensions: ['json', 'html', 'htm'] }] }).catch(() => ({ canceled: true, filePaths: [] }));
+  if (result.canceled || !result.filePaths?.[0]) return { ok: false, canceled: true };
+  try {
+    const source = await fs.promises.readFile(result.filePaths[0], 'utf8');
+    let rows = [];
+    if (/\.html?$/i.test(result.filePaths[0])) {
+      const anchor = /<a\\b([^>]*)>([\\s\\S]*?)<\\/a>/gi;
+      let match;
+      while ((match = anchor.exec(source)) !== null) {
+        const href = /href\\s*=\\s*["']([^"']+)["']/i.exec(match[1])?.[1];
+        const title = match[2].replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').trim();
+        if (href && isWebUrl(href)) rows.push({ title: title || href, url: href, addedAt: Date.now() });
+      }
+    } else {
+      const parsed = JSON.parse(source);
+      rows = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.bookmarks) ? parsed.bookmarks : []);
+    }
+    const existing = new Set(browserData.bookmarks.map(item => item.url));
+    const incoming = rows.filter(item => item && isWebUrl(item.url) && !existing.has(item.url)).map(item => ({ title: String(item.title || item.url).slice(0,300), url: String(item.url).slice(0,4000), addedAt: Date.now() }));
+    browserData.bookmarks = [...incoming, ...browserData.bookmarks].slice(0,1000);
+    saveState();
+    return { ok: true, count: incoming.length, bookmarks: browserData.bookmarks };
+  } catch (error) { return { ok: false, error: error.message }; }
+});
 
 ipcMain.handle('browser:get-data', () => browserData);
 ipcMain.handle('browser:save-bookmarks', (_event, items) => {
