@@ -40,6 +40,8 @@ jobs:
         run: npm install
       - name: Validate JavaScript syntax
         run: npm run check
+      - name: Run filter engine tests
+        run: npm test
       - name: Build application
         run: npm run ${{ matrix.script }}
       - name: Upload build artifacts
