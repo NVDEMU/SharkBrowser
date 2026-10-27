@@ -23,6 +23,7 @@ let browserData = {
   bookmarks: [],
   history: [],
   downloads: [],
+  extensions: [],
   permissions: {},
   sessionTabs: [],
   settings: {
@@ -90,6 +91,34 @@ async function readPasswordVault() {
   return { ok: true, status: passwordStorageStatus(), entries: passwordVault.map(publicPassword) };
 }
 
+
+function publicExtension(entry) {
+  return { id: entry.id, name: entry.name, version: entry.version, manifestVersion: entry.manifestVersion, enabled: Boolean(entry.enabled), error: entry.error || '' };
+}
+async function loadSavedExtensions() {
+  const ses = session.fromPartition('persist:shark');
+  for (const entry of browserData.extensions) {
+    if (!entry || !entry.path) continue;
+    try {
+      const manifest = JSON.parse(await fs.promises.readFile(path.join(entry.path, 'manifest.json'), 'utf8'));
+      const extension = await ses.extensions.loadExtension(entry.path, { allowFileAccess: false });
+      Object.assign(entry, {
+        id: extension.id,
+        name: String(manifest.name || extension.name || 'Extension').slice(0, 200),
+        version: String(manifest.version || extension.version || '').slice(0, 40),
+        manifestVersion: Number(manifest.manifest_version) || 0,
+        enabled: true,
+        error: ''
+      });
+    } catch (error) {
+      entry.enabled = false;
+      entry.error = String(error.message || 'Could not load extension').slice(0, 500);
+      console.warn('Could not load extension', entry.name, error.message);
+    }
+  }
+  saveState();
+}
+
 function isWebUrl(value) {
   try { return ['http:', 'https:'].includes(new URL(value).protocol); } catch { return false; }
 }
@@ -107,6 +136,7 @@ function readState() {
     browserData.bookmarks = Array.isArray(browserData.bookmarks) ? browserData.bookmarks : [];
     browserData.history = Array.isArray(browserData.history) ? browserData.history.slice(0, 1000) : [];
     browserData.downloads = Array.isArray(browserData.downloads) ? browserData.downloads.slice(0, 300) : [];
+    browserData.extensions = Array.isArray(browserData.extensions) ? browserData.extensions.slice(0, 100) : [];
     browserData.permissions = browserData.permissions || {};
     browserData.sessionTabs = Array.isArray(browserData.sessionTabs) ? browserData.sessionTabs : [];
     browserData.settings = { ...browserData.settings, ...(state.browserData?.settings || {}) };
@@ -385,6 +415,7 @@ app.whenReady().then(async () => {
   passwordFile = path.join(app.getPath('userData'), 'passwords.enc');
   readState();
   await initializePasswordVault();
+  await loadSavedExtensions();
   blocker = ElectronBlocker.parse(FALLBACK_FILTERS);
   createWindow();
   installApplicationMenu();
@@ -524,6 +555,80 @@ ipcMain.handle('browser:import-bookmarks', async () => {
     saveState();
     return { ok: true, count: incoming.length, bookmarks: browserData.bookmarks };
   } catch (error) { return { ok: false, error: error.message }; }
+});
+
+
+ipcMain.handle('browser:get-extensions', () => browserData.extensions.map(publicExtension));
+ipcMain.handle('browser:install-extension', async () => {
+  const picked = await dialog.showOpenDialog(mainWindow || undefined, {
+    title: 'Choose an unpacked extension folder',
+    properties: ['openDirectory']
+  }).catch(() => ({ canceled: true, filePaths: [] }));
+  if (picked.canceled || !picked.filePaths?.[0]) return { ok: false, canceled: true };
+  const extensionPath = path.resolve(picked.filePaths[0]);
+  try {
+    const manifest = JSON.parse(await fs.promises.readFile(path.join(extensionPath, 'manifest.json'), 'utf8'));
+    if (!manifest || !manifest.name || !manifest.version || ![2, 3].includes(Number(manifest.manifest_version))) {
+      return { ok: false, error: 'The folder does not contain a supported Chrome extension manifest (version 2 or 3).' };
+    }
+    const exists = browserData.extensions.find(entry => entry.path === extensionPath && entry.enabled);
+    if (exists) return { ok: true, alreadyInstalled: true, extensions: browserData.extensions.map(publicExtension) };
+    const ses = session.fromPartition('persist:shark');
+    const extension = await ses.extensions.loadExtension(extensionPath, { allowFileAccess: false });
+    const record = {
+      id: extension.id,
+      path: extensionPath,
+      name: String(manifest.name || extension.name || 'Extension').slice(0, 200),
+      version: String(manifest.version || extension.version || '').slice(0, 40),
+      manifestVersion: Number(manifest.manifest_version) || 0,
+      enabled: true,
+      error: ''
+    };
+    browserData.extensions = [record, ...browserData.extensions.filter(entry => entry.path !== extensionPath)].slice(0, 100);
+    saveState();
+    return { ok: true, extensions: browserData.extensions.map(publicExtension) };
+  } catch (error) {
+    return { ok: false, error: String(error.message || 'Extension could not be loaded').slice(0, 800) };
+  }
+});
+ipcMain.handle('browser:remove-extension', async (_event, extensionId) => {
+  const entry = browserData.extensions.find(item => item.id === extensionId);
+  if (!entry) return { ok: false, error: 'Extension not found.' };
+  try {
+    const ses = session.fromPartition('persist:shark');
+    if (entry.enabled) ses.extensions.removeExtension(extensionId);
+    browserData.extensions = browserData.extensions.filter(item => item.id !== extensionId);
+    saveState();
+    return { ok: true, extensions: browserData.extensions.map(publicExtension) };
+  } catch (error) {
+    return { ok: false, error: String(error.message || 'Could not remove extension').slice(0, 500) };
+  }
+});
+ipcMain.handle('browser:toggle-extension', async (_event, extensionId, enabledFlag) => {
+  const entry = browserData.extensions.find(item => item.id === extensionId);
+  if (!entry) return { ok: false, error: 'Extension not found.' };
+  try {
+    const ses = session.fromPartition('persist:shark');
+    if (!enabledFlag) {
+      if (entry.enabled) ses.extensions.removeExtension(extensionId);
+      entry.enabled = false; entry.error = '';
+    } else {
+      const manifest = JSON.parse(await fs.promises.readFile(path.join(entry.path, 'manifest.json'), 'utf8'));
+      const loaded = await ses.extensions.loadExtension(entry.path, { allowFileAccess: false });
+      entry.id = loaded.id;
+      entry.name = String(manifest.name || loaded.name || entry.name).slice(0, 200);
+      entry.version = String(manifest.version || loaded.version || entry.version).slice(0, 40);
+      entry.manifestVersion = Number(manifest.manifest_version) || entry.manifestVersion;
+      entry.enabled = true; entry.error = '';
+    }
+    saveState();
+    return { ok: true, extensions: browserData.extensions.map(publicExtension) };
+  } catch (error) {
+    entry.enabled = false;
+    entry.error = String(error.message || 'Could not toggle extension').slice(0, 500);
+    saveState();
+    return { ok: false, error: entry.error, extensions: browserData.extensions.map(publicExtension) };
+  }
 });
 
 ipcMain.handle('browser:get-data', () => browserData);
