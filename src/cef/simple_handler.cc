@@ -649,7 +649,7 @@ void SimpleHandler::OnAddressChange(CefRefPtr<CefBrowser> browser,
   tab->internal_page = false;
   if (StartsWith(value, "http://") || StartsWith(value, "https://")) {
     tab->last_site_url = value;
-    if (!tab->is_private) RecordHistory(value);
+    if (!tab->is_private) RecordHistory(value, tab->title);
   }
   if (tab->id == active_tab_id_) RefreshToolbarState();
   RefreshTabButtons();
@@ -974,13 +974,13 @@ void SimpleHandler::SaveStats() {
   file << blocked_total_.load() << '\n' << blocked_ads_.load() << '\n' << blocked_trackers_.load() << '\n';
 }
 
-void SimpleHandler::RecordHistory(const std::string& url) {
-  if (url.empty() || !StartsWith(url, "http") || (ActiveTab() && ActiveTab()->is_private)) return;
+void SimpleHandler::RecordHistory(const std::string& url, const std::string& title) {
+  if (url.empty() || !StartsWith(url, "http")) return;
   if (!history_.empty() && history_.front().url == url) {
-    history_.front().title = ActiveTab() ? ActiveTab()->title : url;
+    history_.front().title = title.empty() ? url : title;
     return;
   }
-  history_.insert(history_.begin(), {ActiveTab() ? ActiveTab()->title : url, url});
+  history_.insert(history_.begin(), {title.empty() ? url : title, url});
   if (history_.size() > 1000) history_.resize(1000);
   SaveHistory();
 }
