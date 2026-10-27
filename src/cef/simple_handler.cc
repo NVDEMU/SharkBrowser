@@ -652,7 +652,7 @@ void SimpleHandler::HandleInternalAction(const std::string& action) {
     out << (blocking_enabled_ ? "1" : "0") << "\n" << home_page_ << "\n";
   } else if (StartsWith(action, "find/")) {
     const std::string encoded = action.substr(5);
-    const std::string term = CefURIDecode(encoded, true, UU_NORMAL | UU_URL_SPECIAL_CHARS_EXCEPT_PATH_SEPARATORS).ToString();
+    const std::string term = CefURIDecode(encoded, true, static_cast<cef_uri_unescape_rule_t>(UU_NORMAL | UU_URL_SPECIAL_CHARS_EXCEPT_PATH_SEPARATORS)).ToString();
     if (ActiveTab() && ActiveTab()->view && ActiveTab()->view->GetBrowser() && !term.empty())
       ActiveTab()->view->GetBrowser()->GetHost()->Find(term, true, false, false);
   } else if (StartsWith(action, "remove-bookmark/")) {
