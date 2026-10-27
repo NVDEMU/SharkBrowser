@@ -111,7 +111,7 @@ function configureSession(ses, isPrivate) {
   configuredSessions.add(ses);
 
   ses.webRequest.onBeforeRequest((details, callback) => {
-    if (!enabled || !browserData.settings.blockAds || !blocker || !details.url.startsWith('http')) return callback({});
+    if (!enabled || !blocker || !details.url.startsWith('http')) return callback({});
     const pageHost = safeHostname(details.referrer);
     if (pageHost && [...allowlist].some(domain => isDomain(pageHost, domain))) return callback({});
     try {
@@ -219,20 +219,38 @@ function configureSession(ses, isPrivate) {
 
 async function initializeBlocker() {
   const cachePath = path.join(app.getPath('userData'), 'adblocker-cache.bin');
+  // Restore a previously compiled filter database first, so a disconnected
+  // first launch after an upgrade still gets its last working filter lists.
   try {
-    const fresh = await ElectronBlocker.fromPrebuiltAdsAndTracking(fetch, {
-      path: cachePath,
-      read: file => fs.promises.readFile(file),
-      write: (file, data) => fs.promises.writeFile(file, data)
-    });
-    blocker = fresh;
+    const cached = await fs.promises.readFile(cachePath);
+    blocker = ElectronBlocker.deserialize(cached);
     blockerReady = true;
-    console.log('Shark ad/tracker filter engine is ready.');
     emitStats();
-  } catch (error) {
-    console.warn('Using bundled fallback ad/tracker rules; full lists could not be loaded:', error.message);
-    // Keep the working fallback engine; the next launch will retry the full lists.
-  }
+    console.log('Shark loaded its cached ad/tracker filter database.');
+  } catch {}
+
+  const refresh = async () => {
+    try {
+      const fresh = await ElectronBlocker.fromPrebuiltAdsAndTracking(fetch);
+      await fs.promises.writeFile(cachePath + '.tmp', fresh.serialize());
+      await fs.promises.rename(cachePath + '.tmp', cachePath);
+      blocker = fresh;
+      blockerReady = true;
+      emitStats();
+      console.log('Shark refreshed EasyList-compatible ad/tracker filters.');
+      scheduleFilterRefresh(24 * 60 * 60 * 1000);
+    } catch (error) {
+      console.warn('Filter-list refresh failed; keeping the last working blocker:', error.message);
+      scheduleFilterRefresh(60 * 60 * 1000);
+    }
+  };
+  refresh();
+}
+let filterRefreshTimer = null;
+function scheduleFilterRefresh(delayMs) {
+  if (filterRefreshTimer) clearTimeout(filterRefreshTimer);
+  filterRefreshTimer = setTimeout(() => initializeBlocker(), delayMs);
+  if (typeof filterRefreshTimer.unref === 'function') filterRefreshTimer.unref();
 }
 
 function createWindow({ isPrivate = false } = {}) {
@@ -322,8 +340,8 @@ app.on('web-contents-created', (_event, contents) => {
 });
 
 ipcMain.handle('shark:get-state', () => ({ ...stats, enabled, allowlist: [...allowlist], blockerReady }));
-ipcMain.handle('shark:set-blocking', (_event, value) => { enabled = Boolean(value); saveState(); emitStats(); return enabled; });
-ipcMain.handle('shark:set-ad-blocking', (_event, value) => { browserData.settings.blockAds = Boolean(value); saveState(); emitStats(); return browserData.settings.blockAds; });
+ipcMain.handle('shark:set-blocking', (_event, value) => { enabled = Boolean(value); browserData.settings.blockAds = enabled; saveState(); emitStats(); return enabled; });
+ipcMain.handle('shark:set-ad-blocking', (_event, value) => { enabled = Boolean(value); browserData.settings.blockAds = enabled; saveState(); emitStats(); return enabled; });
 ipcMain.handle('shark:allow-site', (_event, hostname) => {
   const host = String(hostname || '').toLowerCase().replace(/^www\./, '');
   if (/^[a-z0-9.-]+$/.test(host) && !host.includes('..') && host.length <= 253) allowlist.add(host);
@@ -358,6 +376,7 @@ ipcMain.handle('browser:save-settings', (_event, settings) => {
     if (engines.has(settings.searchEngine)) browserData.settings.searchEngine = settings.searchEngine;
     if (settings.homePage === 'shark://home' || isWebUrl(settings.homePage)) browserData.settings.homePage = String(settings.homePage).slice(0, 4000);
     browserData.settings.restoreSession = settings.restoreSession !== false;
+    if (typeof settings.blockAds === 'boolean') { browserData.settings.blockAds = settings.blockAds; enabled = settings.blockAds; }
   }
   saveState(); return browserData.settings;
 });
