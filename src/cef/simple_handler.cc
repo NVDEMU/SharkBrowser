@@ -310,9 +310,37 @@ void SimpleHandler::HandleButton(const std::string& action, CefRefPtr<CefButton>
   } else if (action == "focus-address") {
     if (address_field_) { address_field_->RequestFocus(); address_field_->SelectAll(false); }
   } else if (action == "find") {
-    OpenRoute("find");
-  } else if (action == "find-submit") {
-    OpenRoute("find");
+    if (find_field_) {
+      const bool show = !find_field_->IsVisible();
+      find_field_->SetVisible(show);
+      if (show) {
+        find_field_->RequestFocus();
+      } else {
+        if (ActiveTab() && ActiveTab()->view && ActiveTab()->view->GetBrowser())
+          ActiveTab()->view->GetBrowser()->GetHost()->StopFinding(true);
+        last_find_text_.clear();
+      }
+    }
+  } else if (action == "reopen-tab") {
+    if (!closed_tab_urls_.empty()) {
+      const std::string url = closed_tab_urls_.back();
+      closed_tab_urls_.pop_back();
+      CreateTab(url, false);
+    }
+  } else if (action == "next-tab") {
+    CycleTab(1);
+  } else if (action == "previous-tab") {
+    CycleTab(-1);
+  } else if (action == "zoom-in" || action == "zoom-out" || action == "zoom-reset") {
+    Tab* tab = ActiveTab();
+    if (tab && tab->view && tab->view->GetBrowser()) {
+      if (action == "zoom-reset") {
+        tab->zoom_level = 0.0;
+      } else {
+        tab->zoom_level = std::max(-5.0, std::min(5.0, tab->zoom_level + (action == "zoom-in" ? 1.0 : -1.0)));
+      }
+      tab->view->GetBrowser()->GetHost()->SetZoomLevel(tab->zoom_level);
+    }
   } else if (action == "print") {
     if (ActiveTab() && ActiveTab()->view && ActiveTab()->view->GetBrowser()) ActiveTab()->view->GetBrowser()->GetHost()->Print();
   } else if (action == "private") {
