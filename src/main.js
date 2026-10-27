@@ -86,8 +86,10 @@ function createWindow({ isPrivate = false } = {}) {
       sandbox: false
     }
   });
+  const partition = isPrivate ? 'shark-private-' + Date.now() + '-' + Math.random().toString(36).slice(2) : 'persist:shark';
+  configureBlocking(session.fromPartition(partition));
   if (isPrivate) privateWindows.add(win);
-  win.loadFile(path.join(__dirname, 'index.html'), { query: isPrivate ? { private: '1' } : {} });
+  win.loadFile(path.join(__dirname, 'index.html'), { query: isPrivate ? { private: '1', partition } : { partition } });
   win.on('closed', () => { privateWindows.delete(win); if (win === mainWindow) mainWindow = null; });
   if (!isPrivate) mainWindow = win;
   return win;
@@ -96,7 +98,6 @@ function createWindow({ isPrivate = false } = {}) {
 app.whenReady().then(() => {
   dataFile = path.join(app.getPath('userData'), 'shark-state.json');
   readState();
-  configureBlocking(session.defaultSession);
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
