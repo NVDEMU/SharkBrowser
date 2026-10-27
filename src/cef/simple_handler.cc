@@ -520,6 +520,10 @@ void SimpleHandler::CloseTab(int tab_id) {
   auto it = std::find_if(tabs_.begin(), tabs_.end(), [tab_id](const Tab& tab) { return tab.id == tab_id; });
   if (it == tabs_.end()) return;
   const bool was_active = (active_tab_id_ == tab_id);
+  if (!it->is_private && (StartsWith(it->url, "http://") || StartsWith(it->url, "https://"))) {
+    closed_tab_urls_.push_back(it->url);
+    if (closed_tab_urls_.size() > 20) closed_tab_urls_.erase(closed_tab_urls_.begin());
+  }
   CefRefPtr<CefBrowserView> view = it->view;
   CefRefPtr<CefBrowser> browser = view ? view->GetBrowser() : nullptr;
   if (tab_panel_) {
@@ -920,8 +924,11 @@ bool SimpleHandler::OnPreKeyEvent(CefRefPtr<CefBrowser> browser,
   const bool modifier = (event.modifiers & (EVENTFLAG_CONTROL_DOWN | EVENTFLAG_COMMAND_DOWN)) != 0;
   if (!modifier) return false;
   const int key = event.windows_key_code;
+  const bool shift = (event.modifiers & EVENTFLAG_SHIFT_DOWN) != 0;
   std::string action;
-  if (key == 'T') action = "new-tab";
+  if (key == 9) action = shift ? "previous-tab" : "next-tab";
+  else if (key == 'T') action = shift ? "reopen-tab" : "new-tab";
+  else if (key == 'N' && shift) action = "private";
   else if (key == 'W') action = "close-active";
   else if (key == 'L') action = "focus-address";
   else if (key == 'R') action = "reload";
@@ -930,6 +937,9 @@ bool SimpleHandler::OnPreKeyEvent(CefRefPtr<CefBrowser> browser,
   else if (key == 'J') action = "downloads";
   else if (key == 'F') action = "find";
   else if (key == 'P') action = "print";
+  else if (key == '0') action = "zoom-reset";
+  else if (key == 187 || key == 107 || key == '=' || key == '+') action = "zoom-in";
+  else if (key == 189 || key == 109 || key == '-') action = "zoom-out";
   else return false;
   if (is_keyboard_shortcut) *is_keyboard_shortcut = true;
   CefPostTask(TID_UI, base::BindOnce(&SimpleHandler::HandleButton, this, action, CefRefPtr<CefButton>()));
@@ -964,6 +974,16 @@ void SimpleHandler::LoadProfile() {
   load_entries(std::filesystem::path(user_data_path_) / "history.tsv", &history_);
   if (bookmarks_.size() > 1000) bookmarks_.resize(1000);
   if (history_.size() > 1000) history_.resize(1000);
+
+  std::ifstream session_file(std::filesystem::path(user_data_path_) / "session.txt");
+  std::string session_url;
+  while (std::getline(session_file, session_url)) {
+    session_url = Trim(session_url);
+    if (StartsWith(session_url, "http://") || StartsWith(session_url, "https://")) {
+      saved_session_tabs_.push_back(session_url);
+      if (saved_session_tabs_.size() >= 40) break;
+    }
+  }
 
   std::ifstream stats_file(std::filesystem::path(user_data_path_) / "stats.txt");
   int total = 0, ads = 0, trackers = 0;
@@ -1057,6 +1077,25 @@ void SimpleHandler::SaveStats() {
   if (user_data_path_.empty()) return;
   std::ofstream file(std::filesystem::path(user_data_path_) / "stats.txt", std::ios::trunc);
   file << blocked_total_.load() << '\n' << blocked_ads_.load() << '\n' << blocked_trackers_.load() << '\n';
+}
+
+void SimpleHandler::SaveSession() {
+  if (user_data_path_.empty()) return;
+  std::vector<std::string> urls;
+  for (auto& tab : tabs_) {
+    if (tab.is_private) continue;
+    std::string url = tab.url;
+    if (tab.view && tab.view->GetBrowser()) {
+      const std::string current = tab.view->GetBrowser()->GetMainFrame()->GetURL().ToString();
+      if (StartsWith(current, "http://") || StartsWith(current, "https://")) url = current;
+    }
+    if (StartsWith(url, "http://") || StartsWith(url, "https://")) {
+      urls.push_back(url);
+      if (urls.size() >= 40) break;
+    }
+  }
+  std::ofstream file(std::filesystem::path(user_data_path_) / "session.txt", std::ios::trunc);
+  for (const auto& url : urls) file << url << '\n';
 }
 
 void SimpleHandler::RecordHistory(const std::string& url, const std::string& title) {
