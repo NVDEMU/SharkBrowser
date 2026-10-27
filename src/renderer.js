@@ -3,7 +3,9 @@ const viewport = $('viewport'), tabsBar = $('tabs');
 const HOME = 'shark://home';
 let tabs = [], activeId = null, nextId = 1, historyItems = [], bookmarks = [];
 let blockState = { total: 0, ads: 0, trackers: 0, bySite: {}, recent: [], enabled: true, allowlist: [] };
-const isPrivate = new URLSearchParams(location.search).has('private');
+const query = new URLSearchParams(location.search);
+const isPrivate = query.has('private');
+const browserPartition = query.get('partition') || 'persist:shark';
 
 function normalizeInput(input) {
   const value = input.trim();
@@ -28,7 +30,7 @@ function makeTab(url = HOME, activate = true) {
 function createView(tab, url) {
   if (tab.view) { try { tab.view.remove(); } catch {} }
   const view = document.createElement('webview');
-  view.className = 'webview'; view.setAttribute('allowpopups', ''); view.setAttribute('webpreferences', 'contextIsolation=yes,nodeIntegration=no,sandbox=yes');
+  view.className = 'webview'; view.setAttribute('partition', browserPartition); view.setAttribute('allowpopups', ''); view.setAttribute('webpreferences', 'contextIsolation=yes,nodeIntegration=no,sandbox=yes');
   view.src = url; view.style.display = 'none';
   view.addEventListener('page-title-updated', e => { tab.title = e.title || 'New Tab'; renderTabs(); });
   view.addEventListener('did-start-loading', () => { tab.loading = true; if (activeId === tab.id) $('reload').textContent = '×'; });
