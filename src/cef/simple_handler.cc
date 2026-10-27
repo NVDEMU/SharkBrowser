@@ -201,6 +201,7 @@ void SimpleHandler::BuildWindow(CefRefPtr<CefWindow> window) {
 
   add_button(tab_panel_, "◆ Shark", "home", 94);
   add_button(tab_panel_, "New tab +", "new-tab", 76);
+  add_button(tab_panel_, "Private", "private", 62);
 
   add_button(toolbar_panel_, "←", "back", 34);
   add_button(toolbar_panel_, "→", "forward", 34);
@@ -872,7 +873,7 @@ void SimpleHandler::LoadProfile() {
       if (split == std::string::npos) continue;
       const std::string title = line.substr(0, split);
       const std::string url = line.substr(split + 1);
-      if (StartsWith(url, "http://") || StartsWith(url, "https://")) out->emplace_back(title, url);
+      if (StartsWith(url, "http://") || StartsWith(url, "https://")) out->push_back({title, url});
     }
   };
   load_entries(std::filesystem::path(user_data_path_) / "bookmarks.tsv", &bookmarks_);
