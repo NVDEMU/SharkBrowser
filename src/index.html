@@ -10,36 +10,43 @@
 <body>
   <header class="chrome">
     <div class="brand"><span class="fin">◆</span><span>SHARK</span></div>
-    <div id="tabs" class="tabs" role="tablist"></div>
-    <button id="new-tab" class="icon-button" title="New tab (Ctrl+T)">＋</button>
-    <button id="private-window" class="icon-button" title="New private window">◐</button>
+    <div id="tabs" class="tabs" role="tablist" aria-label="Browser tabs"></div>
+    <button id="new-tab" class="icon-button" title="New tab (Ctrl+T)" aria-label="New tab">＋</button>
+    <button id="private-window" class="icon-button" title="New private window" aria-label="New private window">◐</button>
   </header>
   <nav class="toolbar">
-    <button id="back" class="nav-button" title="Back (Alt+Left)">←</button>
-    <button id="forward" class="nav-button" title="Forward (Alt+Right)">→</button>
-    <button id="reload" class="nav-button" title="Reload (Ctrl+R)">↻</button>
-    <button id="home" class="nav-button" title="Home">⌂</button>
-    <form id="address-form"><span class="secure" id="secure-icon">◈</span><input id="address" autocomplete="off" spellcheck="false" placeholder="Search or enter address"><button type="submit" aria-label="Go">↵</button></form>
-    <button id="bookmark" class="nav-button" title="Bookmark this page">☆</button>
-    <button id="downloads" class="nav-button" title="Downloads">↓</button>
-    <button id="history" class="nav-button" title="History">◷</button>
-    <button id="privacy" class="shield" title="Privacy protection and statistics"><span>🛡</span><b id="blocked-badge">0</b></button>
-    <button id="menu" class="nav-button" title="Menu">⋯</button>
+    <button id="back" class="nav-button" title="Back (Alt+Left)" aria-label="Back">←</button>
+    <button id="forward" class="nav-button" title="Forward (Alt+Right)" aria-label="Forward">→</button>
+    <button id="reload" class="nav-button" title="Reload (Ctrl+R)" aria-label="Reload">↻</button>
+    <button id="home" class="nav-button" title="Home" aria-label="Home">⌂</button>
+    <form id="address-form"><span class="secure" id="secure-icon">◈</span><input id="address" aria-label="Address and search" autocomplete="off" spellcheck="false" placeholder="Search or enter address"><button type="submit" aria-label="Go">↵</button></form>
+    <button id="bookmark" class="nav-button" title="Bookmark this page (Ctrl+D)" aria-label="Bookmark page">☆</button>
+    <button id="downloads" class="nav-button" title="Downloads (Ctrl+J)" aria-label="Downloads">↓</button>
+    <button id="history" class="nav-button" title="History (Ctrl+H)" aria-label="History">◷</button>
+    <button id="privacy" class="shield" title="Privacy protection and statistics" aria-label="Privacy protection"><span>🛡</span><b id="blocked-badge">0</b></button>
+    <button id="menu" class="nav-button" title="Menu" aria-label="Menu">⋯</button>
   </nav>
   <main id="viewport">
     <section id="welcome" class="welcome">
       <div class="hero-mark">◆</div><h1>Make waves.</h1>
       <p>A faster, quieter corner of the web.</p>
       <form id="search-form" class="big-search"><span>⌕</span><input id="welcome-search" placeholder="Search the web or enter a URL" autocomplete="off"><button>Search</button></form>
-      <div class="quick-links"><button data-url="https://www.wikipedia.org">Wikipedia</button><button data-url="https://www.youtube.com">YouTube</button><button data-url="https://github.com">GitHub</button><button data-url="https://www.google.com">Google</button></div>
-      <div class="welcome-note"><span class="pulse"></span> Tracker protection is <strong id="welcome-protection">on</strong></div>
+      <div class="quick-links"><button data-url="https://www.wikipedia.org">Wikipedia</button><button data-url="https://www.youtube.com">YouTube</button><button data-url="https://github.com">GitHub</button><button data-url="https://www.duckduckgo.com">DuckDuckGo</button></div>
+      <div class="welcome-note"><span class="pulse"></span> Ad and tracker protection is <strong id="welcome-protection">on</strong></div>
     </section>
+    <form id="findbar" class="findbar hidden">
+      <input id="find-input" aria-label="Find in page" placeholder="Find in page" autocomplete="off">
+      <span id="find-count" class="find-count"></span>
+      <button type="button" id="find-prev" title="Previous match">↑</button>
+      <button type="button" id="find-next" title="Next match">↓</button>
+      <button type="button" id="find-close" title="Close find bar">×</button>
+    </form>
   </main>
   <aside id="panel" class="panel hidden">
-    <div class="panel-head"><div><small>SHARK PRIVACY</small><h2 id="panel-title">Protection</h2></div><button id="close-panel" class="icon-button">×</button></div>
+    <div class="panel-head"><div><small>SHARK BROWSER</small><h2 id="panel-title">Protection</h2></div><button id="close-panel" class="icon-button" aria-label="Close panel">×</button></div>
     <div id="panel-content"></div>
   </aside>
-  <div id="toast" class="toast hidden"></div>
+  <div id="toast" class="toast hidden" role="status"></div>
   <script src="renderer.js"></script>
 </body>
 </html>
