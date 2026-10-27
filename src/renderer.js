@@ -258,6 +258,114 @@ function showHistory() {
   draw(''); $('history-filter').oninput=e=>draw(e.target.value);
   $('clear-history').onclick=async()=>{historyItems=[];persistHistory();await window.shark.clearHistory();draw('');showToast('Browsing history cleared');};
 }
+
+function offerPasswordSave(tab, offer) {
+  if (!tab || activeId !== tab.id || !offer || typeof offer !== 'object') return;
+  let offeredOrigin, currentOrigin;
+  try { offeredOrigin = new URL(offer.origin).origin; currentOrigin = new URL(tab.view.getURL()).origin; } catch { return; }
+  if (offeredOrigin !== currentOrigin) return;
+  if (!/^https:/.test(offeredOrigin) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(offeredOrigin)) return;
+  if (!offer.password) return;
+  passwordOffer = { origin: offeredOrigin, username: String(offer.username || '').slice(0, 512), password: String(offer.password).slice(0, 8192) };
+  openPanel('Save this login?',
+    '<div class="empty">Shark noticed a login form submitted on <strong>' + escapeHtml(offeredOrigin) + '</strong>. Your password is saved only if you click Save login.</div>' +
+    '<div class="field"><label for="offered-username">Username</label><input id="offered-username" autocomplete="off" value="' + escapeHtml(passwordOffer.username) + '"></div>' +
+    '<div class="panel-actions"><button id="save-offered-password" class="primary">Save login</button><button id="skip-offered-password" class="secondary">Not now</button><button id="never-offered-password" class="secondary">Never for this site</button></div>' +
+    '<div class="empty">Saved passwords are encrypted with your operating system key store. Nothing is saved before your confirmation.</div>');
+  $('save-offered-password').onclick = async () => {
+    const result = await window.shark.savePassword({ origin: passwordOffer.origin, username: $('offered-username').value.trim(), password: passwordOffer.password });
+    if (!result.ok) return showToast(result.error);
+    passwordEntries = result.entries; passwordStatus = result.status; passwordOffer = null; closePanel(); showToast('Login saved securely');
+  };
+  $('skip-offered-password').onclick = () => { passwordOffer = null; closePanel(); };
+  $('never-offered-password').onclick = () => { passwordOffer = null; closePanel(); showToast('Login not saved.'); };
+}
+
+async function fillSavedPassword(id) {
+  const tab = activeTab();
+  if (!tab?.view || !isWebUrl(tab.url)) return showToast('Open the matching website first.');
+  const secret = await window.shark.getPasswordSecret(id);
+  if (!secret.ok) return showToast(secret.error);
+  let pageOrigin;
+  try { pageOrigin = new URL(tab.view.getURL()).origin; } catch {}
+  if (pageOrigin !== secret.origin) return showToast('Saved logins only fill on their exact website origin.');
+  const payload = JSON.stringify({ origin: secret.origin, username: secret.username, password: secret.password });
+  const fillFn = function(data) {
+    if (window.top !== window || location.origin !== data.origin) return { ok: false, reason: 'This is not the saved website.' };
+    const visible = el => !!(el && el.getClientRects().length && !el.disabled && !el.readOnly);
+    const fields = Array.from(document.querySelectorAll('input')).filter(visible);
+    const pass = fields.find(el => el.type === 'password');
+    if (!pass) return { ok: false, reason: 'No visible password field was found on this page.' };
+    const user = fields.find(el => el !== pass && /^(username|email)$/i.test(el.autocomplete || '')) ||
+      fields.find(el => el !== pass && (el.type === 'email' || /user|email|login/i.test((el.name || '') + ' ' + (el.id || '')))) ||
+      fields.find(el => el !== pass && el.type === 'text' && !/search|coupon|promo/i.test((el.name || '') + ' ' + (el.id || '')));
+    const set = (el, value) => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      setter.call(el, value);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    if (user) set(user, data.username);
+    set(pass, data.password);
+    pass.focus();
+    return { ok: true, usernameFilled: !!user };
+  };
+  try {
+    const result = await tab.view.executeJavaScript('(' + fillFn.toString() + ')(' + payload + ')');
+    if (result.ok) showToast('Login filled. Review the page and submit it yourself.');
+    else showToast(result.reason || 'Could not fill this login on the current page.');
+  } catch { showToast('Could not fill this login. The page may have changed.'); }
+}
+
+function showPasswords() {
+  openPanel('Saved passwords',
+    '<div id="passwords-status" class="empty">Checking encrypted password storage…</div>' +
+    '<div class="panel-actions"><button id="password-add" class="secondary">Add login manually</button></div><div id="password-list"></div>');
+  const render = () => {
+    $('passwords-status').textContent = passwordStatus.available ? passwordStatus.reason : passwordStatus.reason + ' Password saving is disabled.';
+    $('password-add').disabled = !passwordStatus.available;
+    $('password-list').innerHTML = passwordEntries.map(entry =>
+      '<div class="download-item"><strong>' + escapeHtml(entry.origin) + '</strong><div class="site-detail">' + escapeHtml(entry.username) + '</div>' +
+      '<div class="mini-actions"><button data-fill-password="' + escapeHtml(entry.id) + '">Fill on open page</button><button data-delete-password="' + escapeHtml(entry.id) + '">Delete</button></div></div>'
+    ).join('') || (passwordStatus.available ? '<div class="empty">No saved logins yet. Sign into a site and choose Save login, or add one manually.</div>' : '<div class="empty">Set up a system password/keyring store to enable secure password storage.</div>');
+    $('password-list').querySelectorAll('[data-fill-password]').forEach(button => button.onclick = () => fillSavedPassword(button.dataset.fillPassword));
+    $('password-list').querySelectorAll('[data-delete-password]').forEach(button => button.onclick = async () => {
+      const result = await window.shark.deletePassword(button.dataset.deletePassword);
+      if (!result.ok) return showToast(result.error);
+      passwordEntries = result.entries; passwordStatus = result.status; render(); showToast('Saved login deleted');
+    });
+  };
+  const addForm = () => {
+    let currentOrigin = '';
+    try { if (isWebUrl(pageUrl())) currentOrigin = new URL(pageUrl()).origin; } catch {}
+    openPanel('Add saved login',
+      '<div class="field"><label for="password-origin">Website origin (HTTPS)</label><input id="password-origin" placeholder="https://example.com" value="' + escapeHtml(currentOrigin) + '"></div>' +
+      '<div class="field"><label for="password-username">Username or email</label><input id="password-username" autocomplete="off"></div>' +
+      '<div class="field"><label for="password-secret">Password</label><input id="password-secret" type="password" autocomplete="new-password"></div>' +
+      '<div class="panel-actions"><button class="primary" id="password-save">Encrypt and save</button><button class="secondary" id="password-cancel">Cancel</button></div>' +
+      '<div class="empty">Passwords are encrypted with your operating system key store and never saved as plaintext.</div>');
+    $('password-cancel').onclick = showPasswords;
+    $('password-save').onclick = async () => {
+      const origin = $('password-origin').value.trim(), username = $('password-username').value.trim(), password = $('password-secret').value;
+      if (!origin || !username || !password) return showToast('Enter website, username, and password.');
+      const result = await window.shark.savePassword({ origin, username, password });
+      if (!result.ok) return showToast(result.error);
+      passwordEntries = result.entries; passwordStatus = result.status; showPasswords(); showToast('Login encrypted and saved');
+    };
+  };
+  $('password-add').onclick = addForm;
+  Promise.all([window.shark.getPasswordStatus(), window.shark.getPasswords()]).then(([status, result]) => {
+    passwordStatus = status;
+    if (result.ok) passwordEntries = result.entries;
+    else passwordStatus = { ...status, available: false, reason: result.error };
+    if (!$('panel').classList.contains('hidden') && $('panel-title').textContent === 'Saved passwords') render();
+  }).catch(() => {
+    passwordStatus = { available: false, reason: 'Could not open the password vault.', count: 0 };
+    if (!$('panel').classList.contains('hidden') && $('panel-title').textContent === 'Saved passwords') render();
+  });
+  render();
+}
+
 function showBookmarks() {
   openPanel('Bookmarks', '<div class="site-input"><input id="bookmark-title" placeholder="Bookmark title"><button id="save-bookmark">Save current</button></div><div id="bookmark-list"></div>');
   const draw = () => {
