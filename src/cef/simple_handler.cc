@@ -89,7 +89,7 @@ class SharkTextfieldDelegate final : public CefTextfieldDelegate {
  public:
   explicit SharkTextfieldDelegate(CefRefPtr<SimpleHandler> handler) : handler_(handler) {}
   bool OnKeyEvent(CefRefPtr<CefTextfield> textfield, const CefKeyEvent& event) override {
-    return handler_->HandleAddressKey(event);
+    return handler_->HandleAddressKey(textfield, event);
   }
  private:
   CefRefPtr<SimpleHandler> handler_;
@@ -214,6 +214,14 @@ void SimpleHandler::BuildWindow(CefRefPtr<CefWindow> window) {
   toolbar_panel_->AddChildView(address_field_);
   toolbar_layout_->SetFlexForView(address_field_, 1);
   add_button(toolbar_panel_, "Go", "go", 40);
+  add_button(toolbar_panel_, "Find", "find", 43);
+  find_field_ = CefTextfield::CreateTextfield(
+      new SharkTextfieldDelegate(CefRefPtr<SimpleHandler>(this)));
+  find_field_->SetPlaceholderText("Find in page");
+  find_field_->SetMinimumSize(CefSize(130, 29));
+  find_field_->SetVisible(false);
+  toolbar_panel_->AddChildView(find_field_);
+  toolbar_layout_->SetFlexForView(find_field_, 0);
   add_button(toolbar_panel_, "☆", "bookmark", 34);
   add_button(toolbar_panel_, "History", "history", 58);
   add_button(toolbar_panel_, "Downloads", "downloads", 72);
@@ -233,7 +241,13 @@ void SimpleHandler::BuildWindow(CefRefPtr<CefWindow> window) {
   window_->AddChildView(root_panel_);
   window_->Show();
 
-  CreateTab(initial_url_, false);
+  if (initial_url_ == "shark://home" && !saved_session_tabs_.empty()) {
+    const auto restore = saved_session_tabs_;
+    saved_session_tabs_.clear();
+    for (const auto& url : restore) CreateTab(url, false);
+  } else {
+    CreateTab(initial_url_, false);
+  }
   RefreshTabButtons();
   RefreshToolbarState();
   RefreshPrivacyStatus();
@@ -243,6 +257,7 @@ bool SimpleHandler::CanCloseWindow(CefRefPtr<CefWindow> window) {
   CEF_REQUIRE_UI_THREAD();
   if (browser_list_.empty()) return true;
   if (!is_closing_) {
+    SaveSession();
     is_closing_ = true;
     CloseAllBrowsers(false);
   }
@@ -260,6 +275,7 @@ void SimpleHandler::WindowDestroyed() {
   tab_layout_ = nullptr;
   toolbar_layout_ = nullptr;
   address_field_ = nullptr;
+  find_field_ = nullptr;
   status_button_ = nullptr;
   action_buttons_.clear();
   if (is_closing_ && browser_list_.empty()) CefQuitMessageLoop();
