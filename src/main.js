@@ -98,7 +98,7 @@ function publicExtension(entry) {
 async function loadSavedExtensions() {
   const ses = session.fromPartition('persist:shark');
   for (const entry of browserData.extensions) {
-    if (!entry || !entry.path) continue;
+    if (!entry || !entry.path || entry.enabled === false) continue;
     try {
       const manifest = JSON.parse(await fs.promises.readFile(path.join(entry.path, 'manifest.json'), 'utf8'));
       const extension = await ses.extensions.loadExtension(entry.path, { allowFileAccess: false });
@@ -376,6 +376,8 @@ function installApplicationMenu() {
     ]},
     { label: 'Settings', submenu: [
       { label: 'Browser Settings', click: () => sendFocusedShortcut('settings') },
+      { label: 'Manage Extensions', click: () => sendFocusedShortcut('extensions') },
+      { label: 'Saved Passwords', click: () => sendFocusedShortcut('passwords') },
       { label: 'Clear Browsing Data', click: () => sendFocusedShortcut('clear-data') }
     ]},
     { label: 'Help', submenu: [
