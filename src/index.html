@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data: https:;">
+  <title>Shark Browser</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="chrome">
+    <div class="brand"><span class="fin">◆</span><span>SHARK</span></div>
+    <div id="tabs" class="tabs" role="tablist"></div>
+    <button id="new-tab" class="icon-button" title="New tab (Ctrl+T)">＋</button>
+    <button id="private-window" class="icon-button" title="New private window">◐</button>
+  </header>
+  <nav class="toolbar">
+    <button id="back" class="nav-button" title="Back (Alt+Left)">←</button>
+    <button id="forward" class="nav-button" title="Forward (Alt+Right)">→</button>
+    <button id="reload" class="nav-button" title="Reload (Ctrl+R)">↻</button>
+    <button id="home" class="nav-button" title="Home">⌂</button>
+    <form id="address-form"><span class="secure" id="secure-icon">◈</span><input id="address" autocomplete="off" spellcheck="false" placeholder="Search or enter address"><button type="submit" aria-label="Go">↵</button></form>
+    <button id="bookmark" class="nav-button" title="Bookmark this page">☆</button>
+    <button id="downloads" class="nav-button" title="Downloads">↓</button>
+    <button id="history" class="nav-button" title="History">◷</button>
+    <button id="privacy" class="shield" title="Privacy protection and statistics"><span>🛡</span><b id="blocked-badge">0</b></button>
+    <button id="menu" class="nav-button" title="Menu">⋯</button>
+  </nav>
+  <main id="viewport">
+    <section id="welcome" class="welcome">
+      <div class="hero-mark">◆</div><h1>Make waves.</h1>
+      <p>A faster, quieter corner of the web.</p>
+      <form id="search-form" class="big-search"><span>⌕</span><input id="welcome-search" placeholder="Search the web or enter a URL" autocomplete="off"><button>Search</button></form>
+      <div class="quick-links"><button data-url="https://www.wikipedia.org">Wikipedia</button><button data-url="https://www.youtube.com">YouTube</button><button data-url="https://github.com">GitHub</button><button data-url="https://www.google.com">Google</button></div>
+      <div class="welcome-note"><span class="pulse"></span> Tracker protection is <strong id="welcome-protection">on</strong></div>
+    </section>
+  </main>
+  <aside id="panel" class="panel hidden">
+    <div class="panel-head"><div><small>SHARK PRIVACY</small><h2 id="panel-title">Protection</h2></div><button id="close-panel" class="icon-button">×</button></div>
+    <div id="panel-content"></div>
+  </aside>
+  <div id="toast" class="toast hidden"></div>
+  <script src="renderer.js"></script>
+</body>
+</html>
