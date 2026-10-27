@@ -145,7 +145,7 @@ function configureSession(ses, isPrivate) {
     const prior = browserData.permissions[host]?.[permission];
     if (prior === true || prior === false) return callback(prior);
     const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : BrowserWindow.fromWebContents(webContents?.hostWebContents || webContents);
-    const choice = await dialog.showMessageBox(win || undefined, {
+    const permissionDialog = {
       type: 'question',
       title: 'Shark Browser — site permission',
       message: host + ' is requesting permission',
@@ -154,7 +154,8 @@ function configureSession(ses, isPrivate) {
       defaultId: 0,
       cancelId: 0,
       noLink: true
-    }).catch(() => ({ response: 0 }));
+    };
+    const choice = await (win ? dialog.showMessageBox(win, permissionDialog) : dialog.showMessageBox(permissionDialog)).catch(() => ({ response: 0 }));
     const allow = choice.response === 1;
     if (!isPrivate) {
       browserData.permissions[host] ||= {};
@@ -168,10 +169,9 @@ function configureSession(ses, isPrivate) {
     const filename = path.basename(item.getFilename() || 'download');
     const source = (() => { try { return new URL(item.getURL()).origin; } catch { return ''; } })();
     item.pause();
-    const save = await dialog.showSaveDialog(
-      mainWindow && !mainWindow.isDestroyed() ? mainWindow : (BrowserWindow.fromWebContents(sourceContents?.hostWebContents || sourceContents) || undefined),
-      { title: 'Save download', defaultPath: path.join(app.getPath('downloads'), filename) }
-    ).catch(() => ({ canceled: true }));
+    const ownerWindow = BrowserWindow.fromWebContents(sourceContents?.hostWebContents || sourceContents);
+    const saveOptions = { title: 'Save download', defaultPath: path.join(app.getPath('downloads'), filename) };
+    const save = await (ownerWindow ? dialog.showSaveDialog(ownerWindow, saveOptions) : dialog.showSaveDialog(saveOptions)).catch(() => ({ canceled: true }));
     if (save.canceled || !save.filePath) { item.cancel(); return; }
     item.setSavePath(save.filePath);
     const record = {
@@ -253,6 +253,63 @@ function scheduleFilterRefresh(delayMs) {
   if (typeof filterRefreshTimer.unref === 'function') filterRefreshTimer.unref();
 }
 
+
+function sendFocusedShortcut(command) {
+  const win = BrowserWindow.getFocusedWindow() || mainWindow;
+  if (win && !win.isDestroyed()) win.webContents.send('browser:shortcut', command);
+}
+function installApplicationMenu() {
+  const template = [
+    { label: 'Shark', submenu: [
+      { role: 'about', label: 'About Shark Browser' },
+      { type: 'separator' },
+      { label: 'New Tab', accelerator: 'CommandOrControl+T', click: () => sendFocusedShortcut('new-tab') },
+      { label: 'New Private Window', accelerator: 'CommandOrControl+Shift+N', click: () => createWindow({ isPrivate: true }) },
+      { label: 'Close Tab', accelerator: 'CommandOrControl+W', click: () => sendFocusedShortcut('close-tab') },
+      { type: 'separator' },
+      { role: 'hide', visible: process.platform === 'darwin' },
+      { role: 'quit' }
+    ]},
+    { label: 'Edit', submenu: [
+      { role: 'undo' }, { role: 'redo' }, { type: 'separator' },
+      { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' },
+      { type: 'separator' },
+      { label: 'Find in Page', accelerator: 'CommandOrControl+F', click: () => sendFocusedShortcut('find') }
+    ]},
+    { label: 'View', submenu: [
+      { label: 'Reload', accelerator: 'CommandOrControl+R', click: () => sendFocusedShortcut('reload') },
+      { label: 'Force Reload', accelerator: 'CommandOrControl+Shift+R', click: () => sendFocusedShortcut('force-reload') },
+      { label: 'Back', accelerator: 'Alt+Left', click: () => sendFocusedShortcut('back') },
+      { label: 'Forward', accelerator: 'Alt+Right', click: () => sendFocusedShortcut('forward') },
+      { type: 'separator' },
+      { label: 'Zoom In', accelerator: 'CommandOrControl+Plus', click: () => sendFocusedShortcut('zoom-in') },
+      { label: 'Zoom Out', accelerator: 'CommandOrControl+-', click: () => sendFocusedShortcut('zoom-out') },
+      { label: 'Reset Zoom', accelerator: 'CommandOrControl+0', click: () => sendFocusedShortcut('zoom-reset') },
+      { label: 'Print Page', accelerator: 'CommandOrControl+P', click: () => sendFocusedShortcut('print') },
+      { role: 'togglefullscreen' },
+      { type: 'separator' }, { role: 'toggleDevTools' }
+    ]},
+    { label: 'History', submenu: [
+      { label: 'Show History', accelerator: 'CommandOrControl+H', click: () => sendFocusedShortcut('history') },
+      { label: 'Reopen Closed Tab', accelerator: 'CommandOrControl+Shift+T', click: () => sendFocusedShortcut('reopen-tab') },
+      { label: 'Downloads', accelerator: 'CommandOrControl+J', click: () => sendFocusedShortcut('downloads') }
+    ]},
+    { label: 'Bookmarks', submenu: [
+      { label: 'Bookmark This Page', accelerator: 'CommandOrControl+D', click: () => sendFocusedShortcut('bookmark') },
+      { label: 'Show Bookmarks', click: () => sendFocusedShortcut('bookmarks') },
+      { label: 'Privacy & Blocking Statistics', click: () => sendFocusedShortcut('privacy') }
+    ]},
+    { label: 'Settings', submenu: [
+      { label: 'Browser Settings', click: () => sendFocusedShortcut('settings') },
+      { label: 'Clear Browsing Data', click: () => sendFocusedShortcut('clear-data') }
+    ]},
+    { label: 'Help', submenu: [
+      { label: 'SharkBrowser on GitHub', click: () => shell.openExternal('https://github.com/NVDEMU/SharkBrowser') }
+    ]}
+  ];
+  app.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 function createWindow({ isPrivate = false } = {}) {
   const partition = isPrivate
     ? 'shark-private-' + crypto.randomUUID()
@@ -283,6 +340,7 @@ app.whenReady().then(() => {
   readState();
   blocker = ElectronBlocker.parse(FALLBACK_FILTERS);
   createWindow();
+  installApplicationMenu();
   initializeBlocker();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
