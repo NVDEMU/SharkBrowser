@@ -17,10 +17,17 @@ jobs:
         include:
           - os: windows-latest
             script: dist:win
+            artifact-path: dist/*.exe
           - os: macos-latest
             script: dist:mac
+            artifact-path: |
+              dist/*.dmg
+              dist/*.zip
           - os: ubuntu-latest
             script: dist:linux
+            artifact-path: |
+              dist/*.AppImage
+              dist/*.deb
     runs-on: ${{ matrix.os }}
     steps:
       - name: Check out source
@@ -28,19 +35,21 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
       - name: Install dependencies
         run: npm install
+      - name: Validate JavaScript syntax
+        run: npm run check
       - name: Build application
         run: npm run ${{ matrix.script }}
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: SharkBrowser-${{ matrix.os }}
-          path: dist/*
+          path: ${{ matrix.artifact-path }}
           if-no-files-found: error
       - name: Publish tagged release assets
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: ${{ matrix.artifact-path }}
