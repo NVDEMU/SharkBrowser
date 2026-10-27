@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('shark', {
   removeAllowSite: host => ipcRenderer.invoke('shark:remove-allow-site', host),
   clearStats: () => ipcRenderer.invoke('shark:clear-stats'),
   newPrivateWindow: () => ipcRenderer.invoke('shark:new-private-window'),
+  openExternal: url => ipcRenderer.invoke('shark:open-external', url),
   getBrowserData: () => ipcRenderer.invoke('browser:get-data'),
   saveBookmarks: items => ipcRenderer.invoke('browser:save-bookmarks', items),
   saveHistory: items => ipcRenderer.invoke('browser:save-history', items),
