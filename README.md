@@ -5,7 +5,7 @@ Shark is an experimental cross-platform desktop browser built in **C++ with Chro
 ## Current native features
 
 - CEF/Chromium website rendering with normal JavaScript, modern CSS, video, and multi-process rendering
-- Multi-tab browsing, new tab, close tab, tab selection, back, forward, reload, home, address/search field, and common Ctrl/Cmd keyboard shortcuts
+- Multi-tab browsing, new tab, close tab, tab selection, back, forward, reload, home, address/search field, find-in-page, page zoom, recently closed tab recovery, session restore (up to 40 HTTP(S) tabs), and common Ctrl/Cmd keyboard shortcuts
 - Search/address normalization through DuckDuckGo when the text is not a URL
 - Private tabs use a separate in-memory CEF request context; private browsing requests are not added to the history or blocking statistics
 - Network-request blocking with built-in fallback rules plus optional EasyList and EasyPrivacy domain rules
@@ -32,7 +32,7 @@ Run from a Visual Studio 2022 developer terminal:
 ```powershell
 python tools/download_filters.py
 cmake -S . -B build -G "Visual Studio 17 2022" -A x64
-cmake --build build --config Release --target cefsimple --parallel 2
+cmake --build build --config Release --target shark_copy_filters --parallel 2
 python tools/package_cef.py --platform windows --build-dir build --output-dir dist
 ```
 
@@ -58,17 +58,17 @@ cmake --build build --target cefsimple --parallel 2
 python3 tools/package_cef.py --platform linux --build-dir build --output-dir dist
 ```
 
-The output is a TAR.GZ containing the Shark executable and its required Chromium files. Keep all files together after extraction.
+The output is a TAR.GZ containing the Shark executable, its required Chromium files, and filter rules. Keep all files together after extraction. Linux CI also runs a real HTTPS page-rendering smoke test under Xvfb.
 
 ## Automated builds
 
-GitHub Actions builds Windows x64, macOS arm64, and Linux x64 on pushes to `main`, pull requests, and manual dispatch. Tag a version with `v*` to publish the generated packages as GitHub Release assets.
+GitHub Actions builds Windows x64, macOS arm64, and Linux x64 on pushes to `main`, pull requests, and manual dispatch. On Linux, CI launches `https://example.com` in CEF under Xvfb and verifies that the rendered page text contains `Example Domain`. Tag a version with `v*` to publish the generated packages as GitHub Release assets.
 
 ## Blocking engine and known limitations
 
 Shark currently parses the **domain-based subset** of EasyList/EasyPrivacy rules (downloaded at build time) and supplements those rules with built-in fallbacks and URL path heuristics. This is not full Adblock Plus/uBlock Origin filter-list semantics: cosmetic filters, scriptlets, complex exception conditions, and every URL-pattern rule are not supported yet. A request that is blocked is counted once when CEF cancels it; this is a practical statistic, not a claim that all ads or trackers are detected.
 
-This is an early browser prototype, not a security-audited replacement for a mature browser. Chrome Web Store extension installation, full Chrome extension API compatibility, synchronized profiles, a production password manager, automatic profile recovery, and complete session restore are not implemented. The browser should not yet be used for sensitive activity.
+This is an early browser prototype, not a security-audited replacement for a mature browser. Chrome Web Store extension installation, full Chrome extension API compatibility, synchronized profiles, a production password manager, crash recovery, a production password manager, Chrome Web Store extension installation, and full Chrome extension API compatibility are not implemented. Session restore only saves up to 40 HTTP(S) tabs on a normal close; it is not crash recovery. The browser should not yet be used for sensitive activity.
 
 ## CEF
 

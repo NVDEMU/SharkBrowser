@@ -13,6 +13,7 @@
 #include "include/base/cef_callback.h"
 #include "include/cef_path_util.h"
 #include "include/cef_parser.h"
+#include "include/cef_string_visitor.h"
 #include "include/views/cef_fill_layout.h"
 #include "include/cef_request_context.h"
 #include "include/wrapper/cef_closure_task.h"
@@ -111,6 +112,32 @@ class SharkBrowserViewDelegate final : public CefBrowserViewDelegate {
  private:
   CefRefPtr<SimpleHandler> handler_;
   IMPLEMENT_REFCOUNTING(SharkBrowserViewDelegate);
+};
+
+class SmokeTestTextVisitor final : public CefStringVisitor {
+ public:
+  SmokeTestTextVisitor(CefRefPtr<SimpleHandler> handler,
+                       CefRefPtr<CefBrowser> browser,
+                       std::string url)
+      : handler_(handler), browser_(browser), url_(std::move(url)) {}
+
+  void Visit(const CefString& text) override {
+    const std::string body = text.ToString();
+    const bool has_expected_content =
+        url_.find("https://example.com") == 0 &&
+        body.find("Example Domain") != std::string::npos;
+    const std::string details = "URL: " + url_ +
+        "\nBody text bytes: " + std::to_string(body.size()) +
+        "\nExpected page content found: " + (has_expected_content ? "yes" : "no");
+    CefPostTask(TID_UI, base::BindOnce(&SimpleHandler::FinishSmokeTest,
+                                      handler_, browser_, has_expected_content, details));
+  }
+
+ private:
+  CefRefPtr<SimpleHandler> handler_;
+  CefRefPtr<CefBrowser> browser_;
+  const std::string url_;
+  IMPLEMENT_REFCOUNTING(SmokeTestTextVisitor);
 };
 
 }  // namespace
@@ -807,12 +834,54 @@ bool SimpleHandler::OnBeforePopup(CefRefPtr<CefBrowser> browser,
   return true;
 }
 
+void SimpleHandler::OnLoadEnd(CefRefPtr<CefBrowser> browser,
+                               CefRefPtr<CefFrame> frame,
+                               int http_status_code) {
+  CEF_REQUIRE_UI_THREAD();
+  if (!smoke_test_mode_ || smoke_test_finished_ || !frame || !frame->IsMain()) return;
+  const std::string url = frame->GetURL().ToString();
+  if (http_status_code < 200 || http_status_code >= 400) {
+    FinishSmokeTest(browser, false, "Unexpected HTTP status " +
+                    std::to_string(http_status_code) + " for " + url);
+    return;
+  }
+  if (url.find("https://example.com") != 0) {
+    FinishSmokeTest(browser, false, "The test navigation ended at an unexpected URL: " + url);
+    return;
+  }
+  frame->GetText(new SmokeTestTextVisitor(CefRefPtr<SimpleHandler>(this), browser, url));
+}
+
+void SimpleHandler::FinishSmokeTest(CefRefPtr<CefBrowser> browser,
+                                    bool passed,
+                                    const std::string& details) {
+  CEF_REQUIRE_UI_THREAD();
+  if (!smoke_test_mode_ || smoke_test_finished_) return;
+  smoke_test_finished_ = true;
+  {
+    std::ofstream result("SharkSmokeTestResult.txt", std::ios::trunc);
+    result << (passed ? "PASS" : "FAIL") << "\n" << details << "\n";
+  }
+  is_closing_ = true;
+  if (browser && browser->IsValid()) {
+    browser->GetHost()->CloseBrowser(true);
+  } else {
+    CloseAllBrowsers(true);
+  }
+}
+
 void SimpleHandler::OnLoadError(CefRefPtr<CefBrowser> browser,
                                 CefRefPtr<CefFrame> frame,
                                 ErrorCode error_code,
                                 const CefString& error_text,
                                 const CefString& failed_url) {
   CEF_REQUIRE_UI_THREAD();
+  if (smoke_test_mode_ && !smoke_test_finished_ && error_code != ERR_ABORTED &&
+      frame && frame->IsMain()) {
+    FinishSmokeTest(browser, false, "Navigation failed: " + failed_url.ToString() +
+                    " (" + error_text.ToString() + ")");
+    return;
+  }
   if (!is_alloy_style_ || error_code == ERR_ABORTED || !frame || !frame->IsMain()) return;
   std::stringstream html;
   html << "<html><body style='font:16px sans-serif;padding:40px;background:#10151d;color:#eaf2f8'>"

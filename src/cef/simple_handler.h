@@ -59,6 +59,8 @@ class SimpleHandler : public CefClient,
   void ShowMainWindow();
   void CloseAllBrowsers(bool force_close);
   bool IsClosing() const { return is_closing_; }
+  void SetSmokeTestMode(bool enabled) { smoke_test_mode_ = enabled; }
+  void FinishSmokeTest(CefRefPtr<CefBrowser> browser, bool passed, const std::string& details);
 
   // CefDisplayHandler.
   void OnTitleChange(CefRefPtr<CefBrowser> browser, const CefString& title) override;
@@ -86,6 +88,9 @@ class SimpleHandler : public CefClient,
                      bool* no_javascript_access) override;
 
   // CefLoadHandler.
+  void OnLoadEnd(CefRefPtr<CefBrowser> browser,
+                 CefRefPtr<CefFrame> frame,
+                 int http_status_code) override;
   void OnLoadError(CefRefPtr<CefBrowser> browser,
                    CefRefPtr<CefFrame> frame,
                    ErrorCode error_code,
@@ -190,6 +195,8 @@ class SimpleHandler : public CefClient,
 
   const bool is_alloy_style_;
   bool is_closing_ = false;
+  bool smoke_test_mode_ = false;
+  bool smoke_test_finished_ = false;
   int next_tab_id_ = 1;
   int active_tab_id_ = 0;
   std::atomic<bool> blocking_enabled_{true};

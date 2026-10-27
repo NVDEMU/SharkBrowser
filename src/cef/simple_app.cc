@@ -47,6 +47,7 @@ void SimpleApp::OnContextInitialized() {
   std::string url = command_line->GetSwitchValue("url");
   if (url.empty()) url = "shark://home";
   CefRefPtr<SimpleHandler> handler(new SimpleHandler(false));
+  handler->SetSmokeTestMode(command_line->HasSwitch("smoke-test"));
   handler->CreateInitialWindow(url);
 }
 

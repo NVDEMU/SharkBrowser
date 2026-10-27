@@ -45,7 +45,7 @@ jobs:
             libxext-dev libxfixes-dev libxi-dev libxrandr-dev libxrender-dev \
             libxkbcommon-dev libxshmfence-dev libgbm-dev libatspi2.0-dev \
             libatk-bridge2.0-dev libatk1.0-dev libcups2-dev libdrm-dev \
-            libpango1.0-dev
+            libpango1.0-dev xvfb
 
       - name: Set up Python for CEF build tools
         uses: actions/setup-python@v5
@@ -87,6 +87,18 @@ jobs:
       - name: Build Linux
         if: matrix.platform == 'linux'
         run: cmake --build build --target cefsimple --parallel 2
+
+      - name: Smoke test real HTTPS page rendering
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f SharkSmokeTestResult.txt
+          browser="$(find build -type f -name cefsimple -perm -u+x -not -path '*/CMakeFiles/*' | head -n 1)"
+          test -n "$browser"
+          timeout 90s xvfb-run -a "$browser" --url=https://example.com --smoke-test --no-sandbox --disable-gpu
+          cat SharkSmokeTestResult.txt
+          grep -q '^PASS' SharkSmokeTestResult.txt
 
       - name: Package CEF distribution
         run: python tools/package_cef.py --platform ${{ matrix.platform }} --build-dir build --output-dir dist
