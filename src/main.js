@@ -254,6 +254,21 @@ function scheduleFilterRefresh(delayMs) {
 }
 
 
+
+function routeGuestShortcut(contents, event, input) {
+  if (input.type !== 'keyDown') return;
+  const key = String(input.key || '').toLowerCase();
+  const mod = Boolean(input.control || input.meta);
+  let command = null;
+  if (mod && key === 'tab') command = input.shift ? 'previous-tab' : 'next-tab';
+  else if (input.alt && key === 'arrowleft') command = 'back';
+  else if (input.alt && key === 'arrowright') command = 'forward';
+  if (!command) return;
+  event.preventDefault();
+  const host = contents.hostWebContents || contents;
+  if (host && !host.isDestroyed()) host.send('browser:shortcut', command);
+}
+
 function sendFocusedShortcut(command) {
   const win = BrowserWindow.getFocusedWindow() || mainWindow;
   if (win && !win.isDestroyed()) win.webContents.send('browser:shortcut', command);
@@ -348,6 +363,7 @@ app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(
 app.on('before-quit', saveState);
 
 app.on('web-contents-created', (_event, contents) => {
+  contents.on('before-input-event', (event, input) => routeGuestShortcut(contents, event, input));
   contents.setWindowOpenHandler(({ url }) => {
     if (isWebUrl(url)) {
       const target = contents.hostWebContents || contents;
