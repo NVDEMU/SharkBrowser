@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "include/cef_client.h"
+#include "include/cef_keyboard_handler.h"
 #include "include/cef_download_handler.h"
 #include "include/cef_request_handler.h"
 #include "include/cef_resource_request_handler.h"
@@ -168,7 +169,7 @@ class SimpleHandler : public CefClient,
   void RefreshTabButtons();
   void RefreshToolbarState();
   void RefreshPrivacyStatus();
-  void RecordHistory(const std::string& url);
+  void RecordHistory(const std::string& url, const std::string& title);
   bool ShouldBlockRequest(const std::string& request_url,
                           const std::string& referrer_url,
                           std::string* category);
