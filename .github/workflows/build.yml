@@ -82,11 +82,11 @@ jobs:
 
       - name: Build macOS
         if: matrix.platform == 'macos'
-        run: cmake --build build --config Release --target cefsimple --parallel 2
+        run: cmake --build build --config Release --target shark_copy_filters --parallel 2
 
       - name: Build Linux
         if: matrix.platform == 'linux'
-        run: cmake --build build --target cefsimple --parallel 2
+        run: cmake --build build --target shark_copy_filters --parallel 2
 
       - name: Smoke test real HTTPS page rendering
         if: matrix.platform == 'linux'
