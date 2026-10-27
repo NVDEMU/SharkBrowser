@@ -52,12 +52,21 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install Ninja
+        run: python -m pip install ninja
+
+      - name: Set up MSVC environment
+        if: matrix.platform == 'windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
       - name: Download EasyList and EasyPrivacy
         run: python tools/download_filters.py
 
       - name: Configure Windows
         if: matrix.platform == 'windows'
-        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl
 
       - name: Configure macOS (Apple Silicon)
         if: matrix.platform == 'macos'
@@ -69,7 +78,7 @@ jobs:
 
       - name: Build Windows
         if: matrix.platform == 'windows'
-        run: cmake --build build --config Release --target cefsimple --parallel 2
+        run: cmake --build build --target cefsimple --parallel 2
 
       - name: Build macOS
         if: matrix.platform == 'macos'
