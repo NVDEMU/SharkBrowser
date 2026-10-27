@@ -7,6 +7,7 @@
 #include "include/views/cef_browser_view.h"
 #include "include/views/cef_window.h"
 #include "tests/cefsimple/simple_handler.h"
+#include "include/wrapper/cef_helpers.h"
 
 namespace {
 class SharkWindowDelegate final : public CefWindowDelegate {
@@ -32,46 +33,13 @@ class SharkWindowDelegate final : public CefWindowDelegate {
   IMPLEMENT_REFCOUNTING(SharkWindowDelegate);
 };
 
-class SharkButtonDelegate final : public CefButtonDelegate {
- public:
-  SharkButtonDelegate(CefRefPtr<SimpleHandler> handler, std::string action)
-      : handler_(handler), action_(std::move(action)) {}
-  void OnButtonPressed(CefRefPtr<CefButton> button) override {
-    handler_->HandleButton(action_, button);
-  }
- private:
-  CefRefPtr<SimpleHandler> handler_;
-  const std::string action_;
-  IMPLEMENT_REFCOUNTING(SharkButtonDelegate);
-};
-
-class SharkTextfieldDelegate final : public CefTextfieldDelegate {
- public:
-  explicit SharkTextfieldDelegate(CefRefPtr<SimpleHandler> handler) : handler_(handler) {}
-  bool OnKeyEvent(CefRefPtr<CefTextfield> textfield, const CefKeyEvent& event) override {
-    return handler_->HandleAddressKey(event);
-  }
- private:
-  CefRefPtr<SimpleHandler> handler_;
-  IMPLEMENT_REFCOUNTING(SharkTextfieldDelegate);
-};
-
-class SharkBrowserViewDelegate final : public CefBrowserViewDelegate {
- public:
-  explicit SharkBrowserViewDelegate(CefRefPtr<SimpleHandler> handler) : handler_(handler) {}
-  cef_runtime_style_t GetBrowserRuntimeStyle() override {
-    return handler_->GetBrowserRuntimeStyle();
-  }
-  bool OnPopupBrowserViewCreated(CefRefPtr<CefBrowserView> browser_view,
-                                 CefRefPtr<CefBrowserView> popup_browser_view,
-                                 bool is_devtools) override {
-    return handler_->AdoptPopupView(popup_browser_view);
-  }
- private:
-  CefRefPtr<SimpleHandler> handler_;
-  IMPLEMENT_REFCOUNTING(SharkBrowserViewDelegate);
-};
 }  // namespace
+
+void SimpleHandler::CreateInitialWindow(const std::string& url) {
+  CEF_REQUIRE_UI_THREAD();
+  initial_url_ = url.empty() ? "shark://home" : url;
+  CefWindow::CreateTopLevelWindow(new SharkWindowDelegate(CefRefPtr<SimpleHandler>(this)));
+}
 
 void SimpleApp::OnContextInitialized() {
   CEF_REQUIRE_UI_THREAD();
