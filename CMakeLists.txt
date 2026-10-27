@@ -50,11 +50,12 @@ foreach(file simple_app.h simple_app.cc simple_handler.h simple_handler.cc)
 endforeach()
 
 add_subdirectory("${CEF_ROOT}/tests/cefsimple" shark_cefsimple)
-add_custom_command(TARGET cefsimple POST_BUILD
+add_custom_target(shark_copy_filters ALL
   COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:cefsimple>/filters"
   COMMAND "${CMAKE_COMMAND}" -E copy_directory
           "${CMAKE_CURRENT_SOURCE_DIR}/resources/filters"
           "$<TARGET_FILE_DIR:cefsimple>/filters"
+  DEPENDS cefsimple
   VERBATIM
 )
 
