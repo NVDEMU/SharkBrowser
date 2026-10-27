@@ -8,12 +8,25 @@ import subprocess
 import sys
 import tarfile
 
-def find_release(build_dir: Path) -> Path:
-    candidates = [build_dir / "Release", build_dir / "release", build_dir]
-    for candidate in candidates:
-        if candidate.exists() and any(candidate.iterdir()):
-            return candidate
-    raise FileNotFoundError(f"No CEF output directory found under {build_dir}")
+def find_release(build_dir: Path, platform: str) -> Path:
+    if platform == "windows":
+        names = ("cefsimple.exe", "SharkBrowser.exe")
+        for name in names:
+            for executable in build_dir.rglob(name):
+                if "CMakeFiles" not in executable.parts and executable.is_file():
+                    return executable.parent
+    elif platform == "linux":
+        for executable in build_dir.rglob("cefsimple"):
+            if "CMakeFiles" not in executable.parts and executable.is_file():
+                return executable.parent
+    else:
+        for app in build_dir.rglob("cefsimple.app"):
+            if "CMakeFiles" not in app.parts and app.is_dir():
+                return app.parent
+        for app in build_dir.rglob("SharkBrowser.app"):
+            if "CMakeFiles" not in app.parts and app.is_dir():
+                return app.parent
+    raise FileNotFoundError(f"No CEF release output found for {platform} under {build_dir}")
 
 def copy_tree_contents(source: Path, destination: Path) -> None:
     destination.mkdir(parents=True, exist_ok=True)
@@ -104,7 +117,7 @@ def main() -> int:
     parser.add_argument("--output-dir", type=Path, default=Path("dist"))
     args = parser.parse_args()
 
-    out = find_release(args.build_dir)
+    out = find_release(args.build_dir, args.platform)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     for child in args.output_dir.iterdir():
         if child.is_dir():
