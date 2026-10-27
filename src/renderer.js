@@ -7,6 +7,7 @@ const browserPartition = query.get('partition') || 'persist:shark';
 const defaultSettings = { searchEngine: 'duckduckgo', homePage: HOME, restoreSession: true, blockAds: true };
 let tabs = [], activeId = null, nextId = 1, closedTabs = [];
 let historyItems = [], bookmarks = [], downloads = [];
+let extensionEntries = [];
 let passwordEntries = [], passwordStatus = { available: false, reason: 'Checking operating system key store…', count: 0 };
 let passwordOffer = null;
 let settings = { ...defaultSettings };
@@ -317,6 +318,46 @@ async function fillSavedPassword(id) {
   } catch { showToast('Could not fill this login. The page may have changed.'); }
 }
 
+
+function showExtensions() {
+  openPanel('Extensions',
+    '<div class="empty">Shark can load unpacked Chrome extensions. Download an extension archive from its trusted publisher, extract it to a folder, then choose that folder below. The Chrome Web Store and .crx installers are not supported, and some Chrome APIs will not work in Electron.</div>' +
+    '<button class="primary" id="install-extension">Install unpacked extension…</button>' +
+    '<div id="extensions-list"></div>');
+  const render = () => {
+    $('extensions-list').innerHTML = (extensionEntries || []).map(entry =>
+      '<div class="download-item"><strong>' + escapeHtml(entry.name) + '</strong><div class="site-detail">Version ' + escapeHtml(entry.version || 'unknown') + ' · Manifest V' + escapeHtml(entry.manifestVersion || '?') + '</div>' +
+      (entry.error ? '<div class="site-detail danger">' + escapeHtml(entry.error) + '</div>' : '') +
+      '<div class="protection-row"><span>' + (entry.enabled ? 'Enabled' : 'Disabled') + '</span><button class="switch ' + (entry.enabled ? 'on' : '') + '" role="switch" aria-checked="' + entry.enabled + '" data-toggle-extension="' + escapeHtml(entry.id) + '" aria-label="Toggle ' + escapeHtml(entry.name) + '"></button></div>' +
+      '<div class="mini-actions"><button data-remove-extension="' + escapeHtml(entry.id) + '">Remove</button></div></div>'
+    ).join('') || '<div class="empty">No extensions installed.</div>';
+    $('extensions-list').querySelectorAll('[data-toggle-extension]').forEach(button => button.onclick = async () => {
+      const result = await window.shark.toggleExtension(button.dataset.toggleExtension, !button.classList.contains('on'));
+      if (result.extensions) extensionEntries = result.extensions;
+      if (!result.ok) showToast(result.error || 'Could not toggle extension.');
+      render();
+    });
+    $('extensions-list').querySelectorAll('[data-remove-extension]').forEach(button => button.onclick = async () => {
+      const result = await window.shark.removeExtension(button.dataset.removeExtension);
+      if (!result.ok) return showToast(result.error || 'Could not remove extension.');
+      extensionEntries = result.extensions; render(); showToast('Extension removed');
+    });
+  };
+  $('install-extension').onclick = async () => {
+    const result = await window.shark.installExtension();
+    if (result.ok) {
+      extensionEntries = result.extensions;
+      render();
+      showToast(result.alreadyInstalled ? 'Extension is already installed.' : 'Extension installed.');
+    } else if (!result.canceled) showToast(result.error || 'Could not install extension.');
+  };
+  window.shark.getExtensions().then(list => {
+    extensionEntries = list;
+    if (!$('panel').classList.contains('hidden') && $('panel-title').textContent === 'Extensions') render();
+  }).catch(error => showToast('Could not load extensions: ' + error.message));
+  render();
+}
+
 function showPasswords() {
   openPanel('Saved passwords',
     '<div id="passwords-status" class="empty">Checking encrypted password storage…</div>' +
@@ -450,10 +491,10 @@ function showSettings() {
 }
 function showMenu() {
   openPanel('Shark menu',
-    '<div class="menu-grid"><button id="menu-history">◷ &nbsp; History</button><button id="menu-bookmarks">☆ &nbsp; Bookmarks</button><button id="menu-downloads">↓ &nbsp; Downloads</button><button id="menu-privacy">🛡 &nbsp; Privacy stats</button><button id="menu-passwords">🔑 &nbsp; Passwords</button><button id="menu-settings">⚙ &nbsp; Settings</button><button id="menu-private">◐ &nbsp; New private window</button><button id="menu-home">⌂ &nbsp; Home</button><button id="menu-print">▤ &nbsp; Print page</button><button id="menu-find">⌕ &nbsp; Find in page</button><button id="menu-translate">文 &nbsp; Translate page</button></div>'+
+    '<div class="menu-grid"><button id="menu-history">◷ &nbsp; History</button><button id="menu-bookmarks">☆ &nbsp; Bookmarks</button><button id="menu-downloads">↓ &nbsp; Downloads</button><button id="menu-privacy">🛡 &nbsp; Privacy stats</button><button id="menu-passwords">🔑 &nbsp; Passwords</button><button id="menu-extensions">🧩 &nbsp; Extensions</button><button id="menu-settings">⚙ &nbsp; Settings</button><button id="menu-private">◐ &nbsp; New private window</button><button id="menu-home">⌂ &nbsp; Home</button><button id="menu-print">▤ &nbsp; Print page</button><button id="menu-find">⌕ &nbsp; Find in page</button><button id="menu-translate">文 &nbsp; Translate page</button></div>'+
     '<p class="empty">Shortcuts: Ctrl+T new tab · Ctrl+Shift+T reopen tab · Ctrl+W close tab · Ctrl+L address bar · Ctrl+F find · Ctrl+J downloads</p>');
   $('menu-history').onclick=showHistory; $('menu-bookmarks').onclick=showBookmarks; $('menu-downloads').onclick=showDownloads;
-  $('menu-privacy').onclick=showProtectionPanel; $('menu-passwords').onclick=showPasswords; $('menu-settings').onclick=showSettings; $('menu-private').onclick=()=>window.shark.newPrivateWindow();
+  $('menu-privacy').onclick=showProtectionPanel; $('menu-passwords').onclick=showPasswords; $('menu-extensions').onclick=showExtensions; $('menu-settings').onclick=showSettings; $('menu-private').onclick=()=>window.shark.newPrivateWindow();
   $('menu-home').onclick=()=>{closePanel();navigate(settings.homePage||HOME);};
   $('menu-print').onclick=()=>{closePanel();activeTab()?.view?.print();};
   $('menu-find').onclick=()=>{closePanel();openFind();};
@@ -532,6 +573,7 @@ function handleShortcut(command) {
     case 'bookmarks': showBookmarks(); break;
     case 'privacy': showProtectionPanel(); break;
     case 'passwords': showPasswords(); break;
+    case 'extensions': showExtensions(); break;
     case 'settings': case 'clear-data': showSettings(); break;
     case 'focus-address': $('address').focus(); $('address').select(); break;
     case 'home': navigate(settings.homePage||HOME); break;
