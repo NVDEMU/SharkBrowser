@@ -224,6 +224,7 @@ function showProtectionPanel() {
     '<div class="protection-row"><div><strong>Ad & tracker blocking</strong><div class="protection-state">'+(blockState.blockerReady?'Filter lists loaded':'Using built-in fallback rules')+'</div></div><button id="toggle-blocking" class="switch '+(blockState.enabled?'on':'')+'" role="switch" aria-checked="'+blockState.enabled+'" aria-label="Toggle ad and tracker blocking"></button></div>'+
     '<p class="section-label">Exclude a website</p><div class="site-input"><input id="allow-host" placeholder="example.com"><button id="allow-submit">Add</button></div>'+
     (exceptions||'<div class="empty">No website exceptions yet.</div>')+
+    '<p class="section-label">Blocked by site</p>'+(Object.entries(blockState.bySite||{}).sort((a,b)=>b[1].total-a[1].total).slice(0,6).map(([site,v])=>'<div class="recent-item"><strong>'+escapeHtml(site)+'</strong><small>'+v.total+' blocked · '+v.ads+' ads · '+v.trackers+' trackers</small></div>').join('')||'<div class="empty">Site breakdown appears after requests are blocked.</div>')+
     '<p class="section-label">Recently blocked requests</p>'+(rows||'<div class="empty">No blocked requests yet. Browse some sites to see activity.</div>')+
     '<div class="panel-actions"><button id="clear-stats" class="secondary">Reset statistics</button></div>'+
     '<div class="empty">Blocking uses EasyList-compatible network filters. Some ads, first-party tracking, and sponsored content may still appear.</div>');
@@ -381,24 +382,7 @@ $('find-input').addEventListener('input',()=>runFind(false));
 $('find-input').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();runFind(!e.shiftKey);}if(e.key==='Escape')closeFind();});
 document.querySelectorAll('[data-url]').forEach(b=>b.onclick=()=>navigate(b.dataset.url));
 document.addEventListener('keydown', e => {
-  const mod=e.ctrlKey||e.metaKey, key=e.key.toLowerCase();
-  if(mod&&key==='t'){e.preventDefault();makeTab(settings.homePage||HOME);}
-  else if(mod&&key==='w'){e.preventDefault();closeTab(activeId);}
-  else if(mod&&key==='l'){e.preventDefault();$('address').focus();$('address').select();}
-  else if(mod&&key==='r'){e.preventDefault();const t=activeTab();if(t?.view)t.view.reload();}
-  else if(mod&&key==='h'){e.preventDefault();showHistory();}
-  else if(mod&&key==='j'){e.preventDefault();showDownloads();}
-  else if(mod&&key==='d'){e.preventDefault();toggleBookmark();}
-  else if(mod&&key==='f'){e.preventDefault();openFind();}
-  else if(mod&&key==='p'){e.preventDefault();activeTab()?.view?.print();}
-  else if(mod&&e.shiftKey&&key==='t'){e.preventDefault();const old=closedTabs.pop();if(old)makeTab(old.url);else showToast('No recently closed tab.');}
-  else if(mod&&(key==='+'||key==='=')){e.preventDefault();zoomPage(1);}
-  else if(mod&&key==='-'){e.preventDefault();zoomPage(-1);}
-  else if(mod&&key==='0'){e.preventDefault();zoomPage(0,true);}
-  else if(e.altKey&&e.key==='ArrowLeft')$('back').click();
-  else if(e.altKey&&e.key==='ArrowRight')$('forward').click();
-  else if(e.ctrlKey&&e.key==='Tab'){e.preventDefault();cycleTab(e.shiftKey?-1:1);}
-  else if(e.key==='Escape'){closePanel();if(!$('findbar').classList.contains('hidden'))closeFind();}
+  if (e.key === 'Escape') { closePanel(); if (!$('findbar').classList.contains('hidden')) closeFind(); }
 });
 function zoomPage(direction,reset=false) {
   const tab=activeTab();if(!tab?.view)return;
@@ -409,15 +393,42 @@ function cycleTab(direction) {
   if(tabs.length<2)return;
   let index=tabs.findIndex(t=>t.id===activeId);index=(index+direction+tabs.length)%tabs.length;activateTab(tabs[index].id);
 }
+function handleShortcut(command) {
+  switch (command) {
+    case 'new-tab': makeTab(settings.homePage||HOME); break;
+    case 'close-tab': closeTab(activeId); break;
+    case 'reload': { const t=activeTab(); if(t?.view){if(t.loading)t.view.stop();else t.view.reload();} break; }
+    case 'force-reload': activeTab()?.view?.reloadIgnoringCache(); break;
+    case 'back': activeTab()?.view?.goBack(); break;
+    case 'forward': activeTab()?.view?.goForward(); break;
+    case 'next-tab': cycleTab(1); break;
+    case 'previous-tab': cycleTab(-1); break;
+    case 'zoom-in': zoomPage(1); break;
+    case 'zoom-out': zoomPage(-1); break;
+    case 'zoom-reset': zoomPage(0,true); break;
+    case 'find': openFind(); break;
+    case 'history': showHistory(); break;
+    case 'downloads': showDownloads(); break;
+    case 'bookmark': toggleBookmark(); break;
+    case 'print': activeTab()?.view?.print(); break;
+    case 'reopen-tab': { const old=closedTabs.pop(); if(old)makeTab(old.url); else showToast('No recently closed tab.'); break; }
+    case 'bookmarks': showBookmarks(); break;
+    case 'privacy': showProtectionPanel(); break;
+    case 'settings': case 'clear-data': showSettings(); break;
+    case 'focus-address': $('address').focus(); $('address').select(); break;
+    case 'home': navigate(settings.homePage||HOME); break;
+  }
+}
 window.shark.onStats(data=>{
   blockState=data;
   $('blocked-badge').textContent=data.total>999?'999+':String(data.total||0);
   $('welcome-protection').textContent=data.enabled?'on':'off';
-  if(!$('panel').classList.contains('hidden')&&$('panel-title').textContent==='Privacy protection')showProtectionPanel();
+  if(!$('panel').classList.contains('hidden')&&$('panel-title').textContent==='Privacy protection'&&!$('panel').contains(document.activeElement))showProtectionPanel();
 });
 window.shark.onDownloads(data=>{downloads=data;if(!$('panel').classList.contains('hidden')&&$('panel-title').textContent==='Downloads')showDownloads();});
 window.shark.onNewTab(url=>{if(isWebUrl(url))makeTab(url);});
 window.shark.onToast(showToast);
+window.shark.onShortcut(handleShortcut);
 window.shark.getState().then(data=>{
   blockState=data;
   $('blocked-badge').textContent=data.total>999?'999+':String(data.total||0);
