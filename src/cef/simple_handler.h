@@ -149,7 +149,7 @@ class SimpleHandler : public CefClient,
   void SaveStats();
   void LoadFilterLists();
   void CreateTab(const std::string& url, bool is_private);
-  void CreateTabForView(const std::string& url, bool is_private, CefRefPtr<CefBrowserView> view);
+  void CreateTabForView(const std::string& url, bool is_private, CefRefPtr<CefBrowserView> view, CefRefPtr<CefRequestContext> request_context = nullptr);
   void CloseTab(int tab_id);
   void SelectTab(int tab_id);
   void NavigateAddress(const std::string& input);
@@ -164,6 +164,7 @@ class SimpleHandler : public CefClient,
   std::string BuildDownloadsPage() const;
   std::string BuildPrivacyPage() const;
   std::string BuildSettingsPage() const;
+  std::string BuildFindPage() const;
   void RefreshTabButtons();
   void RefreshToolbarState();
   void RefreshPrivacyStatus();
@@ -186,7 +187,7 @@ class SimpleHandler : public CefClient,
   bool is_closing_ = false;
   int next_tab_id_ = 1;
   int active_tab_id_ = 0;
-  bool blocking_enabled_ = true;
+  std::atomic<bool> blocking_enabled_{true};
   std::string user_data_path_;
   std::vector<Tab> tabs_;
   std::vector<CefRefPtr<CefBrowser>> browser_list_;
@@ -214,6 +215,7 @@ class SimpleHandler : public CefClient,
   std::unordered_set<std::string> blocked_tracker_domains_;
   std::unordered_set<std::string> allowed_request_domains_;
   std::unordered_set<std::string> allowed_site_domains_;
+  std::unordered_set<int> private_browser_ids_;
   std::unordered_map<std::string, int> blocked_by_site_;
   std::vector<std::string> recent_blocked_;
   std::atomic<int> blocked_total_{0};
