@@ -10,7 +10,7 @@
   "license": "MIT",
   "scripts": {
     "start": "electron .",
-    "check": "node --check src/main.js && node --check src/preload.js && node --check src/renderer.js",
+    "check": "node --check src/main.js && node --check src/preload.js && node --check src/guest-preload.js && node --check src/filtering.js && node --check src/renderer.js",
     "dist": "electron-builder --publish never",
     "dist:win": "electron-builder --win nsis --publish never",
     "dist:mac": "electron-builder --mac dmg zip --publish never",
