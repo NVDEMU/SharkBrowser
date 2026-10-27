@@ -261,6 +261,7 @@ void SimpleHandler::WindowDestroyed() {
   address_field_ = nullptr;
   status_button_ = nullptr;
   action_buttons_.clear();
+  if (is_closing_ && browser_list_.empty()) CefQuitMessageLoop();
 }
 
 void SimpleHandler::ShowMainWindow() {
@@ -666,6 +667,11 @@ void SimpleHandler::OnLoadingProgressChange(CefRefPtr<CefBrowser> browser, doubl
 void SimpleHandler::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
   CEF_REQUIRE_UI_THREAD();
   browser_list_.push_back(browser);
+  Tab* tab = FindTabByBrowser(browser);
+  if (tab && tab->is_private) {
+    std::lock_guard<std::mutex> lock(filter_mutex_);
+    private_browser_ids_.insert(browser->GetIdentifier());
+  }
 }
 
 bool SimpleHandler::DoClose(CefRefPtr<CefBrowser> browser) {
@@ -678,6 +684,10 @@ void SimpleHandler::OnBeforeClose(CefRefPtr<CefBrowser> browser) {
   auto it = std::find_if(browser_list_.begin(), browser_list_.end(),
                          [&browser](const CefRefPtr<CefBrowser>& b) { return b->IsSame(browser); });
   if (it != browser_list_.end()) browser_list_.erase(it);
+  {
+    std::lock_guard<std::mutex> lock(filter_mutex_);
+    private_browser_ids_.erase(browser->GetIdentifier());
+  }
   if (browser_list_.empty()) {
     if (!is_closing_ && tabs_.empty() && window_) {
       CreateTab("shark://home", false);
@@ -760,18 +770,26 @@ SimpleHandler::ReturnValue SimpleHandler::OnBeforeResourceLoad(
   const std::string referrer_url = request ? request->GetReferrerURL().ToString() : "";
   std::string category;
   if (ShouldBlockRequest(request_url, referrer_url, &category)) {
-    const std::string site = ExtractHost(referrer_url);
-    const std::string request_host = ExtractHost(request_url);
-    const int total = ++blocked_total_;
-    if (category == "tracker") ++blocked_trackers_; else ++blocked_ads_;
-    {
+    bool private_request = false;
+    if (browser) {
       std::lock_guard<std::mutex> lock(filter_mutex_);
-      blocked_by_site_[site.empty() ? "unknown" : site]++;
-      recent_blocked_.insert(recent_blocked_.begin(), (category == "tracker" ? "Tracker: " : "Ad: ") + request_host + " (on " + site + ")");
-      if (recent_blocked_.size() > 30) recent_blocked_.resize(30);
+      private_request = private_browser_ids_.find(browser->GetIdentifier()) != private_browser_ids_.end();
     }
-    if (total == 1 || total % 5 == 0) {
-      CefPostTask(TID_UI, base::BindOnce(&SimpleHandler::RefreshPrivacyStatus, this));
+    // Do not persist or count requests from private tabs.
+    if (!private_request) {
+      const std::string site = ExtractHost(referrer_url);
+      const std::string request_host = ExtractHost(request_url);
+      const int total = ++blocked_total_;
+      if (category == "tracker") ++blocked_trackers_; else ++blocked_ads_;
+      {
+        std::lock_guard<std::mutex> lock(filter_mutex_);
+        blocked_by_site_[site.empty() ? "unknown" : site]++;
+        recent_blocked_.insert(recent_blocked_.begin(), (category == "tracker" ? "Tracker: " : "Ad: ") + request_host + " (on " + site + ")");
+        if (recent_blocked_.size() > 30) recent_blocked_.resize(30);
+      }
+      if (total == 1 || total % 5 == 0) {
+        CefPostTask(TID_UI, base::BindOnce(&SimpleHandler::RefreshPrivacyStatus, this));
+      }
     }
     return RV_CANCEL;
   }
@@ -844,14 +862,15 @@ void SimpleHandler::LoadProfile() {
   std::string homepage;
   if (std::getline(settings, homepage) && !Trim(homepage).empty()) home_page_ = Trim(homepage);
 
-  auto load_entries = [](const std::filesystem::path& path, std::vector<HistoryEntry>* out) {
+  auto load_entries = [](const std::filesystem::path& path, auto* out) {
     std::ifstream file(path);
     std::string line;
     while (std::getline(file, line)) {
       const size_t split = line.find('\t');
       if (split == std::string::npos) continue;
-      HistoryEntry entry{line.substr(0, split), line.substr(split + 1)};
-      if (StartsWith(entry.url, "http://") || StartsWith(entry.url, "https://")) out->push_back(entry);
+      const std::string title = line.substr(0, split);
+      const std::string url = line.substr(split + 1);
+      if (StartsWith(url, "http://") || StartsWith(url, "https://")) out->emplace_back(title, url);
     }
   };
   load_entries(std::filesystem::path(user_data_path_) / "bookmarks.tsv", &bookmarks_);
