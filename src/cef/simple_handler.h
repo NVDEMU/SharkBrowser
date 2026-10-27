@@ -135,6 +135,7 @@ class SimpleHandler : public CefClient,
     std::string url;
     std::string last_site_url;
     bool is_private = false;
+    bool internal_page = false;
     CefRefPtr<CefBrowserView> view;
     CefRefPtr<CefRequestContext> request_context;
     CefRefPtr<CefLabelButton> tab_button;
@@ -193,6 +194,7 @@ class SimpleHandler : public CefClient,
   std::vector<std::pair<std::string, std::string>> bookmarks_;
   std::vector<std::string> downloads_;
   std::string home_page_ = "shark://home";
+  std::string initial_url_ = "shark://home";
 
   CefRefPtr<CefWindow> window_;
   CefRefPtr<CefPanel> root_panel_;
