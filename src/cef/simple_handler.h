@@ -14,6 +14,7 @@
 #include "include/cef_keyboard_handler.h"
 #include "include/cef_download_handler.h"
 #include "include/cef_request_handler.h"
+#include "include/cef_request_context.h"
 #include "include/cef_resource_request_handler.h"
 #include "include/cef_urlrequest.h"
 #include "include/views/cef_browser_view.h"
