@@ -53,8 +53,7 @@
         "deb"
       ],
       "category": "Network;WebBrowser",
-      "maintainer": "326190078+NVDEMU@users.noreply.github.com",
-      "desktopName": "Shark Browser"
+      "maintainer": "326190078+NVDEMU@users.noreply.github.com"
     }
   },
   "repository": {
@@ -65,5 +64,6 @@
   "dependencies": {
     "@ghostery/adblocker-electron": "^2.20.1",
     "cross-fetch": "^4.1.0"
-  }
+  },
+  "desktopName": "com.nvdemu.sharkbrowser"
 }
