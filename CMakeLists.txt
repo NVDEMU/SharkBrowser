@@ -28,34 +28,34 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     message(FATAL_ERROR "Shark currently supports 64-bit Windows only.")
   endif()
 else()
-  message(FATAL_ERROR "Unsupported platform: \${CMAKE_SYSTEM_NAME}")
+  message(FATAL_ERROR "Unsupported platform: ${CMAKE_SYSTEM_NAME}")
 endif()
 
-list(APPEND CMAKE_MODULE_PATH "\${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(DownloadCEF)
-DownloadCEF("\${CEF_PLATFORM}" "\${CEF_CHANNEL}" "\${CEF_VERSION}" "\${CMAKE_SOURCE_DIR}/third_party/cef")
-list(APPEND CMAKE_MODULE_PATH "\${CEF_ROOT}/cmake")
+DownloadCEF("${CEF_PLATFORM}" "${CEF_CHANNEL}" "${CEF_VERSION}" "${CMAKE_SOURCE_DIR}/third_party/cef")
+list(APPEND CMAKE_MODULE_PATH "${CEF_ROOT}/cmake")
 find_package(CEF REQUIRED)
 
-add_subdirectory("\${CEF_LIBCEF_DLL_WRAPPER_PATH}" libcef_dll_wrapper)
+add_subdirectory("${CEF_LIBCEF_DLL_WRAPPER_PATH}" libcef_dll_wrapper)
 
 # CEF's standard distribution provides platform entry points, helper
 # executables and packaging rules. Replace only the sample's app/handler.
 foreach(file simple_app.h simple_app.cc simple_handler.h simple_handler.cc)
   configure_file(
-    "\${CMAKE_CURRENT_SOURCE_DIR}/src/cef/\${file}"
-    "\${CEF_ROOT}/tests/cefsimple/\${file}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/cef/${file}"
+    "${CEF_ROOT}/tests/cefsimple/${file}"
     COPYONLY
   )
 endforeach()
 
-add_subdirectory("\${CEF_ROOT}/tests/cefsimple" shark_cefsimple)
+add_subdirectory("${CEF_ROOT}/tests/cefsimple" shark_cefsimple)
 add_custom_command(TARGET cefsimple POST_BUILD
-  COMMAND "\${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:cefsimple>/filters"
-  COMMAND "\${CMAKE_COMMAND}" -E copy_directory
-          "\${CMAKE_CURRENT_SOURCE_DIR}/resources/filters"
+  COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:cefsimple>/filters"
+  COMMAND "${CMAKE_COMMAND}" -E copy_directory
+          "${CMAKE_CURRENT_SOURCE_DIR}/resources/filters"
           "$<TARGET_FILE_DIR:cefsimple>/filters"
   VERBATIM
 )
 
-message(STATUS "Shark uses CEF \${CEF_VERSION} (\${CEF_PLATFORM})")
+message(STATUS "Shark uses CEF ${CEF_VERSION} (${CEF_PLATFORM})")
