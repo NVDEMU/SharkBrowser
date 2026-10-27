@@ -1,6 +1,9 @@
 const { contextBridge, ipcRenderer } = require('electron');
+const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 
 contextBridge.exposeInMainWorld('shark', {
+  guestPreloadUrl: pathToFileURL(path.join(__dirname, 'guest-preload.js')).toString(),
   getState: () => ipcRenderer.invoke('shark:get-state'),
   setBlocking: value => ipcRenderer.invoke('shark:set-blocking', value),
   setAdBlocking: value => ipcRenderer.invoke('shark:set-ad-blocking', value),
@@ -16,6 +19,13 @@ contextBridge.exposeInMainWorld('shark', {
   saveSettings: settings => ipcRenderer.invoke('browser:save-settings', settings),
   saveSession: tabs => ipcRenderer.invoke('browser:save-session', tabs),
   getDownloads: () => ipcRenderer.invoke('browser:get-downloads'),
+  getPasswordStatus: () => ipcRenderer.invoke('browser:get-password-status'),
+  getPasswords: () => ipcRenderer.invoke('browser:get-passwords'),
+  savePassword: payload => ipcRenderer.invoke('browser:save-password', payload),
+  getPasswordSecret: id => ipcRenderer.invoke('browser:get-password-secret', id),
+  deletePassword: id => ipcRenderer.invoke('browser:delete-password', id),
+  exportBookmarks: items => ipcRenderer.invoke('browser:export-bookmarks', items),
+  importBookmarks: () => ipcRenderer.invoke('browser:import-bookmarks'),
   openDownload: id => ipcRenderer.invoke('browser:open-download', id),
   revealDownload: id => ipcRenderer.invoke('browser:reveal-download', id),
   removeDownload: id => ipcRenderer.invoke('browser:remove-download', id),
