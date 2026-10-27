@@ -507,10 +507,10 @@ ipcMain.handle('browser:import-bookmarks', async () => {
     const source = await fs.promises.readFile(result.filePaths[0], 'utf8');
     let rows = [];
     if (/\.html?$/i.test(result.filePaths[0])) {
-      const anchor = /<a\\b([^>]*)>([\\s\\S]*?)<\\/a>/gi;
+      const anchor = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
       let match;
       while ((match = anchor.exec(source)) !== null) {
-        const href = /href\\s*=\\s*["']([^"']+)["']/i.exec(match[1])?.[1];
+        const href = /href\s*=\s*["']([^"']+)["']/i.exec(match[1])?.[1];
         const title = match[2].replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').trim();
         if (href && isWebUrl(href)) rows.push({ title: title || href, url: href, addedAt: Date.now() });
       }
