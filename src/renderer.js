@@ -7,6 +7,8 @@ const browserPartition = query.get('partition') || 'persist:shark';
 const defaultSettings = { searchEngine: 'duckduckgo', homePage: HOME, restoreSession: true, blockAds: true };
 let tabs = [], activeId = null, nextId = 1, closedTabs = [];
 let historyItems = [], bookmarks = [], downloads = [];
+let passwordEntries = [], passwordStatus = { available: false, reason: 'Checking operating system key store…', count: 0 };
+let passwordOffer = null;
 let settings = { ...defaultSettings };
 let blockState = { total: 0, ads: 0, trackers: 0, bySite: {}, recent: [], enabled: true, allowlist: [], blockerReady: false };
 
@@ -67,10 +69,15 @@ function createView(tab, url) {
   const view = document.createElement('webview');
   view.className = 'webview';
   view.setAttribute('partition', browserPartition);
+  view.setAttribute('preload', window.shark.guestPreloadUrl);
   view.setAttribute('allowpopups', '');
   view.setAttribute('webpreferences', 'contextIsolation=yes,nodeIntegration=no,sandbox=yes');
   view.src = url;
   view.style.display = 'none';
+  view.addEventListener('ipc-message', event => {
+    if (event.channel !== 'shark:password-offer' || !event.args || !event.args[0] || isPrivate) return;
+    offerPasswordSave(tab, event.args[0]);
+  });
   view.addEventListener('page-title-updated', e => {
     tab.title = e.title || tab.url || 'New Tab';
     document.title = (tab.title === 'New Tab' ? 'Shark Browser' : tab.title + ' — Shark Browser');
