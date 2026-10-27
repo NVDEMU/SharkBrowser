@@ -414,7 +414,7 @@ bool SimpleHandler::HandleAddressKey(CefRefPtr<CefTextfield> textfield,
           } else {
             const bool find_next = term == last_find_text_;
             const bool forward = (event.modifiers & EVENTFLAG_SHIFT_DOWN) == 0;
-            host->Find(1, term, forward, false, find_next);
+            host->Find(term, forward, false, find_next);
             last_find_text_ = term;
           }
         }
