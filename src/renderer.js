@@ -367,7 +367,7 @@ function showPasswords() {
 }
 
 function showBookmarks() {
-  openPanel('Bookmarks', '<div class="site-input"><input id="bookmark-title" placeholder="Bookmark title"><button id="save-bookmark">Save current</button></div><div id="bookmark-list"></div>');
+  openPanel('Bookmarks', '<div class="site-input"><input id="bookmark-title" placeholder="Bookmark title"><button id="save-bookmark">Save current</button></div><div class="panel-actions"><button class="secondary" id="export-bookmarks">Export JSON</button><button class="secondary" id="import-bookmarks">Import HTML/JSON</button></div><div id="bookmark-list"></div>');
   const draw = () => {
     $('bookmark-list').innerHTML = bookmarks.map((b,i)=>
       '<div class="bookmark-item"><button class="panel-link" data-index="'+i+'">'+escapeHtml(b.title)+'</button><button class="site-remove" data-remove="'+i+'" title="Remove bookmark">×</button><small>'+escapeHtml(b.url)+'</small></div>'
@@ -375,6 +375,8 @@ function showBookmarks() {
     $('bookmark-list').querySelectorAll('[data-index]').forEach(el=>el.onclick=()=>{const b=bookmarks[+el.dataset.index];closePanel();navigate(b.url);});
     $('bookmark-list').querySelectorAll('[data-remove]').forEach(el=>el.onclick=()=>{bookmarks.splice(+el.dataset.remove,1);persistBookmarks();draw();updateBookmarkButton();});
   };
+  $('export-bookmarks').onclick=async()=>{const result=await window.shark.exportBookmarks(bookmarks);if(result.ok)showToast('Exported '+result.count+' bookmarks');else if(!result.canceled)showToast(result.error||'Could not export bookmarks');};
+  $('import-bookmarks').onclick=async()=>{const result=await window.shark.importBookmarks();if(result.ok){bookmarks=result.bookmarks;persistBookmarks();draw();updateBookmarkButton();showToast('Imported '+result.count+' new bookmarks');}else if(!result.canceled)showToast(result.error||'Could not import bookmarks');};
   $('save-bookmark').onclick=()=>{
     const t=activeTab();if(t&&isWebUrl(t.url)){
       const old=bookmarks.find(b=>b.url===t.url);
@@ -448,10 +450,10 @@ function showSettings() {
 }
 function showMenu() {
   openPanel('Shark menu',
-    '<div class="menu-grid"><button id="menu-history">◷ &nbsp; History</button><button id="menu-bookmarks">☆ &nbsp; Bookmarks</button><button id="menu-downloads">↓ &nbsp; Downloads</button><button id="menu-privacy">🛡 &nbsp; Privacy stats</button><button id="menu-settings">⚙ &nbsp; Settings</button><button id="menu-private">◐ &nbsp; New private window</button><button id="menu-home">⌂ &nbsp; Home</button><button id="menu-print">▤ &nbsp; Print page</button><button id="menu-find">⌕ &nbsp; Find in page</button><button id="menu-translate">文 &nbsp; Translate page</button></div>'+
+    '<div class="menu-grid"><button id="menu-history">◷ &nbsp; History</button><button id="menu-bookmarks">☆ &nbsp; Bookmarks</button><button id="menu-downloads">↓ &nbsp; Downloads</button><button id="menu-privacy">🛡 &nbsp; Privacy stats</button><button id="menu-passwords">🔑 &nbsp; Passwords</button><button id="menu-settings">⚙ &nbsp; Settings</button><button id="menu-private">◐ &nbsp; New private window</button><button id="menu-home">⌂ &nbsp; Home</button><button id="menu-print">▤ &nbsp; Print page</button><button id="menu-find">⌕ &nbsp; Find in page</button><button id="menu-translate">文 &nbsp; Translate page</button></div>'+
     '<p class="empty">Shortcuts: Ctrl+T new tab · Ctrl+Shift+T reopen tab · Ctrl+W close tab · Ctrl+L address bar · Ctrl+F find · Ctrl+J downloads</p>');
   $('menu-history').onclick=showHistory; $('menu-bookmarks').onclick=showBookmarks; $('menu-downloads').onclick=showDownloads;
-  $('menu-privacy').onclick=showProtectionPanel; $('menu-settings').onclick=showSettings; $('menu-private').onclick=()=>window.shark.newPrivateWindow();
+  $('menu-privacy').onclick=showProtectionPanel; $('menu-passwords').onclick=showPasswords; $('menu-settings').onclick=showSettings; $('menu-private').onclick=()=>window.shark.newPrivateWindow();
   $('menu-home').onclick=()=>{closePanel();navigate(settings.homePage||HOME);};
   $('menu-print').onclick=()=>{closePanel();activeTab()?.view?.print();};
   $('menu-find').onclick=()=>{closePanel();openFind();};
@@ -529,6 +531,7 @@ function handleShortcut(command) {
     case 'reopen-tab': { const old=closedTabs.pop(); if(old)makeTab(old.url); else showToast('No recently closed tab.'); break; }
     case 'bookmarks': showBookmarks(); break;
     case 'privacy': showProtectionPanel(); break;
+    case 'passwords': showPasswords(); break;
     case 'settings': case 'clear-data': showSettings(); break;
     case 'focus-address': $('address').focus(); $('address').select(); break;
     case 'home': navigate(settings.homePage||HOME); break;
