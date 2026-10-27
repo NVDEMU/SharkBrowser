@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -70,7 +71,50 @@ std::string GetRoute(const std::string& url, const std::string& scheme) {
   while (!route.empty() && route.front() == '/') route.erase(route.begin());
   return route;
 }
+
+class SharkButtonDelegate final : public CefButtonDelegate {
+ public:
+  SharkButtonDelegate(CefRefPtr<SimpleHandler> handler, std::string action)
+      : handler_(handler), action_(std::move(action)) {}
+  void OnButtonPressed(CefRefPtr<CefButton> button) override {
+    handler_->HandleButton(action_, button);
+  }
+ private:
+  CefRefPtr<SimpleHandler> handler_;
+  const std::string action_;
+  IMPLEMENT_REFCOUNTING(SharkButtonDelegate);
+};
+
+class SharkTextfieldDelegate final : public CefTextfieldDelegate {
+ public:
+  explicit SharkTextfieldDelegate(CefRefPtr<SimpleHandler> handler) : handler_(handler) {}
+  bool OnKeyEvent(CefRefPtr<CefTextfield> textfield, const CefKeyEvent& event) override {
+    return handler_->HandleAddressKey(event);
+  }
+ private:
+  CefRefPtr<SimpleHandler> handler_;
+  IMPLEMENT_REFCOUNTING(SharkTextfieldDelegate);
+};
+
+class SharkBrowserViewDelegate final : public CefBrowserViewDelegate {
+ public:
+  explicit SharkBrowserViewDelegate(CefRefPtr<SimpleHandler> handler) : handler_(handler) {}
+  cef_runtime_style_t GetBrowserRuntimeStyle() override {
+    return handler_->GetBrowserRuntimeStyle();
+  }
+  bool OnPopupBrowserViewCreated(CefRefPtr<CefBrowserView> browser_view,
+                                 CefRefPtr<CefBrowserView> popup_browser_view,
+                                 bool is_devtools) override {
+    return handler_->AdoptPopupView(popup_browser_view);
+  }
+ private:
+  CefRefPtr<SimpleHandler> handler_;
+  IMPLEMENT_REFCOUNTING(SharkBrowserViewDelegate);
+};
+
 }  // namespace
+
+std::string InternalStyle();
 
 SimpleHandler::SimpleHandler(bool is_alloy_style) : is_alloy_style_(is_alloy_style) {
   DCHECK(!g_instance);
@@ -87,12 +131,6 @@ SimpleHandler::~SimpleHandler() {
 
 SimpleHandler* SimpleHandler::GetInstance() {
   return g_instance;
-}
-
-void SimpleHandler::CreateInitialWindow(const std::string& url) {
-  CEF_REQUIRE_UI_THREAD();
-  initial_url_ = url.empty() ? "shark://home" : url;
-  CefWindow::CreateTopLevelWindow(new SharkWindowDelegate(CefRefPtr<SimpleHandler>(this)));
 }
 
 CefSize SimpleHandler::PreferredWindowSize() {
@@ -249,6 +287,14 @@ void SimpleHandler::HandleButton(const std::string& action, CefRefPtr<CefButton>
   }
   if (action == "new-tab") {
     CreateTab("shark://home", false);
+  } else if (action == "close-active") {
+    if (active_tab_id_ != 0) CloseTab(active_tab_id_);
+  } else if (action == "focus-address") {
+    if (address_field_) { address_field_->RequestFocus(); address_field_->SelectAll(false); }
+  } else if (action == "find") {
+    OpenRoute("find");
+  } else if (action == "print") {
+    if (ActiveTab() && ActiveTab()->view && ActiveTab()->view->GetBrowser()) ActiveTab()->view->GetBrowser()->GetHost()->Print();
   } else if (action == "private") {
     CreateTab("shark://home", true);
   } else if (action == "back") {
@@ -309,7 +355,7 @@ bool SimpleHandler::AdoptPopupView(CefRefPtr<CefBrowserView> popup_view) {
   CEF_REQUIRE_UI_THREAD();
   if (!popup_view) return false;
   const std::string url = popup_view->GetBrowser() ? popup_view->GetBrowser()->GetMainFrame()->GetURL().ToString() : "shark://home";
-  CreateTabForView(url, false, popup_view);
+  CreateTabForView(url, false, popup_view, nullptr);
   return true;
 }
 
@@ -322,6 +368,7 @@ void SimpleHandler::CreateTab(const std::string& url, bool is_private) {
                                                : normalized == "shark://bookmarks" ? BuildBookmarksPage()
                                                : normalized == "shark://history" ? BuildHistoryPage()
                                                : normalized == "shark://downloads" ? BuildDownloadsPage()
+                                               : normalized == "shark://find" ? BuildFindPage()
                                                : BuildSettingsPage())
                                      : normalized;
 
@@ -338,13 +385,13 @@ void SimpleHandler::CreateTab(const std::string& url, bool is_private) {
   CefRefPtr<CefBrowserView> browser_view = CefBrowserView::CreateBrowserView(
       this, actual_url, browser_settings, nullptr, request_context,
       new SharkBrowserViewDelegate(CefRefPtr<SimpleHandler>(this)));
-  CreateTabForView(normalized, is_private, browser_view);
-  if (ActiveTab() && ActiveTab()->view) ActiveTab()->view->SetVisible(false);
+  CreateTabForView(normalized, is_private, browser_view, request_context);
 }
 
 void SimpleHandler::CreateTabForView(const std::string& url,
                                      bool is_private,
-                                     CefRefPtr<CefBrowserView> view) {
+                                     CefRefPtr<CefBrowserView> view,
+                                     CefRefPtr<CefRequestContext> request_context) {
   CEF_REQUIRE_UI_THREAD();
   if (!view || !content_panel_ || !tab_panel_) return;
   Tab tab;
@@ -356,9 +403,8 @@ void SimpleHandler::CreateTabForView(const std::string& url,
   tab.internal_page = StartsWith(url, "shark://");
   tab.view = view;
   if (is_private) {
-    // The private context is passed to the BrowserView constructor. Keep it alive
-    // as part of the tab until that browser is closed.
-    if (view->GetBrowser()) tab.request_context = view->GetBrowser()->GetHost()->GetRequestContext();
+    // Keep the ephemeral profile alive for the lifetime of this private tab.
+    tab.request_context = request_context;
   }
   const int tab_id = tab.id;
   tab.tab_button = CefLabelButton::CreateLabelButton(
@@ -488,6 +534,7 @@ void SimpleHandler::OpenInternalPage(CefRefPtr<CefBrowser> browser, const std::s
   else if (route == "bookmarks") html = BuildBookmarksPage();
   else if (route == "history") html = BuildHistoryPage();
   else if (route == "downloads") html = BuildDownloadsPage();
+  else if (route == "find") html = BuildFindPage();
   else if (route == "privacy") html = BuildPrivacyPage();
   else html = BuildSettingsPage();
 
@@ -623,7 +670,6 @@ void SimpleHandler::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
 
 bool SimpleHandler::DoClose(CefRefPtr<CefBrowser> browser) {
   CEF_REQUIRE_UI_THREAD();
-  if (browser_list_.size() == 1) is_closing_ = true;
   return false;
 }
 
@@ -633,10 +679,7 @@ void SimpleHandler::OnBeforeClose(CefRefPtr<CefBrowser> browser) {
                          [&browser](const CefRefPtr<CefBrowser>& b) { return b->IsSame(browser); });
   if (it != browser_list_.end()) browser_list_.erase(it);
   if (browser_list_.empty()) {
-    if (is_closing_) {
-      if (window_) window_->Close();
-      CefQuitMessageLoop();
-    } else if (tabs_.empty() && window_) {
+    if (!is_closing_ && tabs_.empty() && window_) {
       CreateTab("shark://home", false);
     }
   }
