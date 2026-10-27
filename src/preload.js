@@ -41,6 +41,11 @@ contextBridge.exposeInMainWorld('shark', {
     ipcRenderer.on('browser:toast', listener);
     return () => ipcRenderer.removeListener('browser:toast', listener);
   },
+  onShortcut: callback => {
+    const listener = (_event, command) => callback(command);
+    ipcRenderer.on('browser:shortcut', listener);
+    return () => ipcRenderer.removeListener('browser:shortcut', listener);
+  },
   onZoomPage: callback => {
     const listener = (_event, direction) => callback(direction);
     ipcRenderer.on('browser:zoom-page', listener);
