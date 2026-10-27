@@ -52,7 +52,7 @@ class SimpleHandler : public CefClient,
   void WindowDestroyed();
   CefSize PreferredWindowSize();
   void HandleButton(const std::string& action, CefRefPtr<CefButton> button);
-  bool HandleAddressKey(const CefKeyEvent& event);
+  bool HandleAddressKey(CefRefPtr<CefTextfield> textfield, const CefKeyEvent& event);
   bool AdoptPopupView(CefRefPtr<CefBrowserView> popup_view);
   cef_runtime_style_t GetBrowserRuntimeStyle();
   void CreateInitialWindow(const std::string& url);
@@ -138,6 +138,7 @@ class SimpleHandler : public CefClient,
     std::string last_site_url;
     bool is_private = false;
     bool internal_page = false;
+    double zoom_level = 0.0;
     CefRefPtr<CefBrowserView> view;
     CefRefPtr<CefRequestContext> request_context;
     CefRefPtr<CefLabelButton> tab_button;
@@ -149,6 +150,7 @@ class SimpleHandler : public CefClient,
   void SaveBookmarks();
   void SaveHistory();
   void SaveStats();
+  void SaveSession();
   void LoadFilterLists();
   void CreateTab(const std::string& url, bool is_private);
   void CreateTabForView(const std::string& url, bool is_private, CefRefPtr<CefBrowserView> view, CefRefPtr<CefRequestContext> request_context = nullptr);
@@ -176,6 +178,7 @@ class SimpleHandler : public CefClient,
                           std::string* category);
   void AddAllowedSite(const std::string& host);
   void ToggleBlocking();
+  void CycleTab(int direction);
   Tab* FindTabByBrowser(CefRefPtr<CefBrowser> browser);
   Tab* ActiveTab();
   const Tab* ActiveTab() const;
@@ -196,6 +199,9 @@ class SimpleHandler : public CefClient,
   std::vector<HistoryEntry> history_;
   std::vector<std::pair<std::string, std::string>> bookmarks_;
   std::vector<std::string> downloads_;
+  std::vector<std::string> saved_session_tabs_;
+  std::vector<std::string> closed_tab_urls_;
+  std::string last_find_text_;
   std::string home_page_ = "shark://home";
   std::string initial_url_ = "shark://home";
 
@@ -209,6 +215,7 @@ class SimpleHandler : public CefClient,
   CefRefPtr<CefBoxLayout> tab_layout_;
   CefRefPtr<CefBoxLayout> toolbar_layout_;
   CefRefPtr<CefTextfield> address_field_;
+  CefRefPtr<CefTextfield> find_field_;
   CefRefPtr<CefLabelButton> status_button_;
   std::map<std::string, CefRefPtr<CefLabelButton>> action_buttons_;
 
