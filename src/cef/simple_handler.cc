@@ -1152,8 +1152,7 @@ std::string InternalStyle() {
 }
 
 std::string SimpleHandler::DataURL(const std::string& html) const {
-  return "data:text/html;charset=utf-8," +
-         CefURIEncode(CefBase64Encode(html.data(), html.size()), false).ToString();
+  return "data:text/html;charset=utf-8;base64," + CefBase64Encode(html.data(), html.size());
 }
 
 std::string SimpleHandler::HtmlEscape(const std::string& input) const {
