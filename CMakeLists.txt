@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.21)
 project(SharkBrowser LANGUAGES C CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_CONFIGURATION_TYPES Debug Release)
 set(CEF_VERSION "154.0.34+g14c5a08+chromium-154.0.8037.98")
@@ -47,8 +50,6 @@ foreach(file simple_app.h simple_app.cc simple_handler.h simple_handler.cc)
 endforeach()
 
 add_subdirectory("\${CEF_ROOT}/tests/cefsimple" shark_cefsimple)
-set_target_properties(cefsimple PROPERTIES OUTPUT_NAME "SharkBrowser")
-
 add_custom_command(TARGET cefsimple POST_BUILD
   COMMAND "\${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:cefsimple>/filters"
   COMMAND "\${CMAKE_COMMAND}" -E copy_directory
